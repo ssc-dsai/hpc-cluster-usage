@@ -8,14 +8,13 @@ Pretty summary of what's going on in the queue.
 
 import getpass
 import sys
-from collections import defaultdict
 from os.path import dirname, realpath
 
 import numpy as np
 
 # Put the parent directory first in the path
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
-from wsge.qstat import qstat
+from wsge.qstat import qstatf
 
 
 def numeric_sort(name):
@@ -28,11 +27,10 @@ def numeric_sort(name):
 
 def main():
 
-    all_queues, users = qstat()
+    all_queues, users = qstatf()
 
     # Setup how people's jobs look:
     usercodes = {}
-    codes = range(1, 256)
     for user_id, user in enumerate(users, start=1):
         usercodes[user] = "\033[38;5;%im" % user_id
 

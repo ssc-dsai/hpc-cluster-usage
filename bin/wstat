@@ -1,0 +1,71 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+Like qstat, but customised.
+
+"""
+
+import sys
+import argparse
+from datetime import datetime
+from os.path import dirname, realpath
+
+from dateutil.parser import parse
+
+# Put the parent directory first in the path
+sys.path.insert(1, dirname(dirname(realpath(__file__))))
+from wsge.qstat import qstat
+
+
+def commandline():
+    """Commandline options in here."""
+    DESCRIPTION = """Wooki job info"""
+    # use description for the script, not for this module
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
+    parser.add_argument("-l", "--long", help="Use long output format")
+    # Always have the job name at the end
+    parser.add_argument('args', help="Name for job", nargs='*',
+                        default='default')
+    options = parser.parse_args()
+
+    return options
+
+
+def main():
+
+    # Get data
+    jobs = qstat()
+    options = commandline()
+
+    # how wide?
+    name_width = max(len(x['JB_name']) for x in jobs)
+
+    # header              "xky        "      job age             t
+    print("job-ID   prior    user          state  run/wait time      queue "
+          "           slots  %-*s" % (name_width, 'name'))
+    print("-"*(80+name_width))
+
+    now = datetime.now().replace(microsecond=0)
+    for job in jobs:
+        # Parse the dates into deltas -> more useful?
+        try:
+            runtime = now - parse(job['JAT_start_time'])
+        except KeyError:
+            runtime = now - parse(job['JB_submission_time'])
+
+        # non running jobs have no queue
+        if job['queue_name'] is not None:
+            queue = job['queue_name'].split('@')[1].split('.')[0]
+        else:
+            queue = ''
+
+        print("{0[JB_job_number]:<7s}  {0[JAT_prio]:<7s}  {0[JB_owner]:<12}  "
+              "{0[state]:<5s}  {runtime:>17s}  {queue:<15}  {0[slots]:>5}  "
+              "{0[JB_name]:<{name_width}s}".format(job, name_width=name_width,
+                                                   runtime=runtime, queue=queue))
+
+    return
+
+if __name__ == '__main__':
+    main()
