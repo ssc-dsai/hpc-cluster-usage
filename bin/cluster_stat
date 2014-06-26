@@ -59,6 +59,7 @@ def main():
     # Cluster usage info
     ##
 
+    used, available, total = 0, 0, 0
 
     for node in sorted(all_queues, key=numeric_sort):
 
@@ -68,11 +69,13 @@ def main():
             lcolumn += max_line_length + 2
             max_line_length = 0
 
+        total += all_queues[node]['slots_total']
         # prune out 'compute-' to make it more compact
         nline = list("%*s " % (max_head, node.replace('compute-', ''))) + ['[']
         nusers = []
         njobs = all_queues[node]
         for job_info in njobs['job_list']:
+            used += job_info['slots']
             if job_info['slots'] > 1:
                 for _slot in range(job_info['slots']):
                     nusers.append((job_info['JB_owner'], 'P'))
@@ -91,7 +94,8 @@ def main():
                                                 'u' in all_queues[node]['state']):
                 nline.append('\033[0mx\033[0m')
             else:
-                nline.append('\033[0m\033[42m-\033[0m')
+                available += 1
+                nline.append('\033[0m\033[42m \033[0m')
 
         # finish node
         nline.append('\033[0m]')
@@ -104,11 +108,27 @@ def main():
         row += 1
 
     ##
-    # Brief user info
+    # Cluster summary
     ##
 
     row = 0
     lcolumn += max_line_length + 4
+
+    nline = list("%-12s  %5i" % ('used:', used))
+    screen[row, lcolumn:lcolumn+len(nline)] = nline
+    row += 1
+    nline = list("%-12s  %5i" % ('available:', available))
+    screen[row, lcolumn:lcolumn+len(nline)] = nline
+    row += 1
+    nline = list("%-12s  %5i" % ('total:', total))
+    screen[row, lcolumn:lcolumn+len(nline)] = nline
+    row += 2
+
+
+    ##
+    # Brief user info
+    ##
+
     max_user_length = max(len(x) for x in users)
 
     header = list("%-*s  %-5s  %-5s  %-5s" %
