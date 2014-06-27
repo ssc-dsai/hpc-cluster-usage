@@ -45,8 +45,7 @@ def main():
     width = 120
     height = 42
     screen = np.array([[" " for _i in range(width)] for _j in range(height)],
-                      dtype='S36')
-
+                      dtype='U36')
     # Column variables
     max_head = 7
     lcolumn = 0
@@ -98,7 +97,7 @@ def main():
         # finish node
         nline.append('\033[0m]')
 
-        nline = np.array(nline, dtype='S36')
+        nline = np.array(nline, dtype='U36')
         screen[row, lcolumn:lcolumn+len(nline)] = nline
 
         # increment all counters
@@ -131,7 +130,7 @@ def main():
 
     header = list("%-*s  %-5s  %-5s  %-5s" %
                   (max_user_length, 'USER', 'r', 'q', 'h'))
-    nline = np.array(header, dtype='S36')
+    nline = np.array(header, dtype='U36')
     screen[row, lcolumn:lcolumn+len(nline)] = nline
     row += 1
 
@@ -149,7 +148,7 @@ def main():
             elif 'r' in job_info['state']:
                 states['r'] += job_info['slots']
             elif user == getpass.getuser():
-                print "Bad job: %s" % job
+                print("Bad job: %s" % job)
             else:
                 # bad job for someone else
                 pass
@@ -159,11 +158,11 @@ def main():
                                                   states['r'], states['q'],
                                                   states['h']))
         nline += ["\033[0m"]
-        nline = np.array(nline, dtype='S36')
+        nline = np.array(nline, dtype='U36')
         screen[row, lcolumn:lcolumn+len(nline)] = nline
         row += 1
 
-    print("\n".join(("".join(line)).rstrip() for line in screen))
+    print("\n".join("".join(x for x in line).rstrip() for line in screen))
 
 if __name__ == '__main__':
     main()
