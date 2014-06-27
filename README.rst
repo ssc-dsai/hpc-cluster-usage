@@ -4,12 +4,12 @@ WSGE
 Some tools to make pretty outputs of GridEngine job information. A few of
 the new commands:
 
-* `cluster_stat`
+* ``cluster_stat``
 
   * An overview of jobs currently running on the cluster and who is
     running them.
 
-* `wstat`
+* ``wstat``
 
   * A tweaked qstat that shows the full job name and has age of jobs instead
     of time.
@@ -25,8 +25,8 @@ features.
 Installation
 ============
 
-Setup as a Python package so that the modules are in your `PYTHONPATH` and
-individual scripts are in your `PATH`.
+Setup as a Python package so that the modules are in your ``PYTHONPATH`` and
+individual scripts are in your ``PATH``.
 
 .. code-block::
 
