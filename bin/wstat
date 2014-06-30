@@ -20,13 +20,11 @@ from wsge.qstat import qstat
 
 def commandline():
     """Commandline options in here."""
-    DESCRIPTION = """Wooki job info"""
+    DESCRIPTION = """Wooki job info with a nicer output than qstat."""
     # use description for the script, not for this module
     parser = argparse.ArgumentParser(description=DESCRIPTION)
-    parser.add_argument("-l", "--long", help="Use long output format")
-    # Always have the job name at the end
-    parser.add_argument('args', help="Name for job", nargs='*',
-                        default='default')
+    parser.add_argument("-u", "--user", nargs='+',
+                        help="User or list of users to show jobs for.")
     options = parser.parse_args()
 
     return options
@@ -48,6 +46,10 @@ def main():
 
     now = datetime.now().replace(microsecond=0)
     for job in jobs:
+        # Skip unwanted users if users requested
+        if options.user is not None and job['JB_owner'] not in options.user:
+            continue
+
         # Parse the dates into deltas -> more useful?
         try:
             runtime = now - parse(job['JAT_start_time'])
