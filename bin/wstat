@@ -42,13 +42,22 @@ def main():
     # header              "xky        "      job age             t
     print("job-ID   prior    user          state  run/wait time      queue "
           "           slots  %-*s" % (name_width, 'name'))
-    print("-"*(80+name_width))
+    print("-"*(82+name_width))
 
+    # Get rid of the microseconds so that the output is only reported to the
+    # second
     now = datetime.now().replace(microsecond=0)
+
+    # Track if we are in pending jobs to add a separator
+    pending_break = False
     for job in jobs:
         # Skip unwanted users if users requested
         if options.user is not None and job['JB_owner'] not in options.user:
             continue
+
+        if not pending_break and 'q' in job['state']:
+            print("-"*(82+name_width))
+            pending_break = True
 
         # Parse the dates into deltas -> more useful?
         try:
