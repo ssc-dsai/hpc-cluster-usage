@@ -86,10 +86,19 @@ def main():
                 nline.append("%s+\033[0m" % usercodes[user])
 
         for empty in range(all_queues[node]['slots_total'] - len(nusers)):
-            if 'state' in all_queues[node] and ('d' in all_queues[node]['state'] or
-                                                'E' in all_queues[node]['state'] or
-                                                'u' in all_queues[node]['state']):
-                nline.append('\033[0mx\033[0m')
+            if 'state' in all_queues[node]:
+                if 'u' in all_queues[node]['state']:
+                    # Unreachable -- node is down!
+                    nline.append('\033[1mu\033[0m')
+                elif 'E' in all_queues[node]['state']:
+                    # Taken offline by error state
+                    nline.append('\033[1mE\033[0m')
+                elif 'd' in all_queues[node]['state']:
+                    # Node set as down
+                    nline.append('\033[1md\033[0m')
+                elif 'a' in all_queues[node]['state']:
+                    # Alert but still running
+                    nline.append('\033[1ma\033[0m')
             else:
                 available += 1
                 nline.append('\033[0m\033[42m \033[0m')
