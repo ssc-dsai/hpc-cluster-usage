@@ -149,7 +149,7 @@ def main():
             'q': 0,
             'r': 0
         }
-        for job, job_info in users[user].items():
+        for job_info in users[user]:
             if 'h' in job_info['state']:
                 states['h'] += job_info['slots']
             elif 'q' in job_info['state']:
@@ -157,7 +157,7 @@ def main():
             elif 'r' in job_info['state']:
                 states['r'] += job_info['slots']
             elif user == getpass.getuser():
-                print("Bad job: %s" % job)
+                print("Bad job: %s" % job_info['JB_job_number'])
             else:
                 # bad job for someone else
                 pass

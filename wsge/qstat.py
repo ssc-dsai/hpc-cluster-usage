@@ -58,8 +58,8 @@ def qstatf():
                 job_dict['slots'] = int(job_dict['slots'])
                 job_dict['JB_queue'] = this_node['name']
                 if job_dict['JB_owner'] not in users:
-                    users[job_dict['JB_owner']] = OrderedDict()
-                users[job_dict['JB_owner']][job_dict['JB_job_number']] = job_dict
+                    users[job_dict['JB_owner']] = []
+                users[job_dict['JB_owner']].append(job_dict)
                 this_node['job_list'].append(job_dict)
                 jobs.append(job_dict)
             else:
@@ -77,8 +77,8 @@ def qstatf():
             job_dict[jitem.tag] = jitem.text
         job_dict['slots'] = int(job_dict['slots'])
         if job_dict['JB_owner'] not in users:
-            users[job_dict['JB_owner']] = OrderedDict()
-        users[job_dict['JB_owner']][job_dict['JB_job_number']] = job_dict
+            users[job_dict['JB_owner']] = []
+        users[job_dict['JB_owner']].append(job_dict)
         jobs.append(job_dict)
 
     return all_queues, users
