@@ -6,8 +6,9 @@ Like qstat, but customised.
 
 """
 
-import sys
 import argparse
+import signal
+import sys
 from datetime import datetime
 from os.path import dirname, realpath
 
@@ -17,6 +18,9 @@ from dateutil.parser import parse
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
 from wsge.qstat import qstat
 
+# If output goes into head or less without finishing, it will terminate with
+# IOError, this makes pipe errors get ignored.
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 def commandline():
     """Commandline options in here."""

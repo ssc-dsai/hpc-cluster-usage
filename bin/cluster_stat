@@ -172,6 +172,7 @@ def main():
         row += 1
 
     print("\n".join("".join(x for x in line).rstrip() for line in screen))
+    sys.stdout.flush()
 
 if __name__ == '__main__':
     main()
