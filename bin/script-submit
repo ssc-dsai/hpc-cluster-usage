@@ -1,0 +1,122 @@
+#!/usr/bin/env python
+
+"""
+
+A template submission script that will run the given command
+or script on a node.
+
+"""
+
+import argparse
+import re
+import subprocess
+
+
+def error(text):
+    """Exit and explain what went wrong"""
+    print("ERROR in job submission, the message was:")
+    print(text)
+    raise SystemExit(1)
+
+
+parser = argparse.ArgumentParser(
+    description='Submit a command or script as a job. The command(s) or '
+                'script will be run as specified on a node. Parallel jobs '
+                'can be mpi or openmp.')
+
+parser.add_argument('command', nargs="+",
+                    help='command and arguments to run')
+parser.add_argument('-N', '--job-name', default='script',
+                    help='name for the job, defaults to `script`')
+parser.add_argument('-n', '--ncpu', type=int, default=1,
+                    help='number of processosr to run on (default: 1)')
+parser.add_argument('-i', '--infiniband', action='store_true',
+                    help='run on infiniband for large parallel jobs')
+parser.add_argument('-r', '--runtime',
+                    help='maximum length of time for the job to run')
+parser.add_argument('-d', '--debug', action='store_true',
+                    help='print script rather than submit')
+parser.add_argument('-p', '--parallel', default='none',
+                    help='type of parallelism to use, `mpi` will prepend '
+                         'mpirun to your command, `omp` will set '
+                         'OMP_NUM_THREADS')
+
+args = parser.parse_args()
+
+args.stdout = re.sub(r'\.in$|$', '.stdout', args.job_name)
+
+
+if not args.runtime:
+    print("No runtime specified, defaulting to 7 days")
+    args.runtime = '168:00:00'
+else:
+    if not re.match('^[0-9]+$|^[0-9]+:[0-9][0-9]:[0-9][0-9]$', args.runtime):
+        error("Please specify runtime in either seconds "
+              "or hh:mm:ss. You wrote {}".format(args.runtime))
+
+if args.infiniband:
+    args.pe = 'ppn4_infiniband*'
+else:
+    if not args.ncpu % 12:
+        args.pe = 'ppn12_*'
+    elif not args.ncpu % 8:
+        args.pe = 'ppn8_*'
+    elif not args.ncpu % 6:
+        args.pe = 'ppn6_*'
+    elif not args.ncpu % 4:
+        args.pe = 'ppn4_*'
+    elif args.ncpu <= 12:
+        args.pe = 'threaded'
+    else:
+        args.pe = 'orte'
+
+if args.parallel.lower() == 'mpi':
+    args.command = 'mpirun -np $NSLOTS %s' % ' '.join(args.command)
+    args.threads = 1
+elif args.parallel.lower() == 'omp':
+    args.command = ' '.join(args.command)
+    args.threads = args.ncpu
+else:
+    args.command = ' '.join(args.command)
+    args.threads = 1
+
+
+submission_script = """
+#!/bin/bash
+
+### Execute where the job was submitted
+#$ -cwd
+### Carry over current environment
+#$ -V
+### Put output and error in the same file
+#$ -j y
+### Name the output
+#$ -o {args.stdout}
+### Hard limit on wallclock time
+#$ -l h_rt={args.runtime}
+### Make a reservation of nodes
+#$ -R y
+### Job name in the qstat list
+#$ -N s.{args.job_name}
+### Allocate all the processes on the same node
+#$ -pe {args.pe} {args.ncpu}
+
+export OMP_NUM_THREADS={args.threads}
+
+ulimit -s unlimited
+
+echo "Job ID $JOB_ID "
+
+echo "Running on hosts: "
+
+cat $PE_HOSTFILE
+
+{args.command}
+
+""".format(args=args)
+
+if args.debug:
+    print(submission_script)
+else:
+    qsub = subprocess.Popen('qsub', stdin=subprocess.PIPE)
+    qsub.communicate(input=submission_script)
