@@ -102,16 +102,25 @@ submission_script = """
 #$ -pe {args.pe} {args.ncpu}
 
 export OMP_NUM_THREADS={args.threads}
-
 ulimit -s unlimited
 
 echo "Job ID $JOB_ID "
 
 echo "Running on hosts: "
-
 cat $PE_HOSTFILE
 
+echo 'Running command line: {args.command}'
+
 {args.command}
+
+if [ $? -eq 0 ]; then
+    echo "Job completed in $SECONDS seconds"
+else
+    echo "Job failed after $SECONDS seconds"
+fi
+
+# More accounting information
+times
 
 """.format(args=args)
 
