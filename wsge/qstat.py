@@ -39,7 +39,8 @@ def qstatf():
     """Return qstat -f output as a dictionary."""
 
     # full output of everything in xml
-    qstat_str = Popen(['qstat', '-u', '*', '-f', '-xml'], stdout=PIPE).stdout.read()
+    qstat_args = ['qstat', '-u', '*', '-f', '-xml']
+    qstat_str = Popen(qstat_args, stdout=PIPE).stdout.read()
     qtree = etree.fromstring(qstat_str)
 
     all_queues = OrderedDict()
@@ -82,4 +83,3 @@ def qstatf():
         jobs.append(job_dict)
 
     return all_queues, users
-

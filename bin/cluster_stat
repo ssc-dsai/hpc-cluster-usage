@@ -26,6 +26,12 @@ def numeric_sort(name):
 
 
 def main():
+    """
+    Read in qstat output and generate an overview of the cluster. Prints
+    directly to the screen.
+
+    :return: Nothing
+    """
 
     all_queues, users = qstatf()
 
@@ -85,7 +91,7 @@ def main():
             else:
                 nline.append("%s+\033[0m" % usercodes[user])
 
-        for empty in range(all_queues[node]['slots_total'] - len(nusers)):
+        for _empty in range(all_queues[node]['slots_total'] - len(nusers)):
             if 'state' in all_queues[node]:
                 if 'u' in all_queues[node]['state']:
                     # Unreachable -- node is down!
@@ -130,11 +136,9 @@ def main():
     screen[row, lcolumn:lcolumn+len(nline)] = nline
     row += 2
 
-
     ##
     # Brief user info
     ##
-
     max_user_length = max(len(x) for x in users)
 
     header = list("%-*s  %-5s  %-5s  %-5s" %

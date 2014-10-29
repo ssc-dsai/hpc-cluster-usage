@@ -2,11 +2,16 @@
 # -*- coding: utf-8 -*-
 
 """
-Like qstat, but customised.
+Wooki job info.
+
+Shows job information, like qstat, but customised for jobs on the local
+cluster. Shows all user jobs by default, use the '--user' argument to
+specify a user or list of users to show jobs for.
 
 """
 
 import argparse
+import re
 import signal
 import sys
 from datetime import datetime
@@ -22,26 +27,35 @@ from wsge.qstat import qstat
 # IOError, this makes pipe errors get ignored.
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
+
 def commandline():
-    """Commandline options in here."""
-    DESCRIPTION = """Wooki job info with a nicer output than qstat."""
-    # use description for the script, not for this module
-    parser = argparse.ArgumentParser(description=DESCRIPTION)
+    """Process commandline options in here. Return the argparse object."""
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-u", "--user", nargs='+',
-                        help="User or list of users to show jobs for.")
+                        help="User or list of users to show jobs for. Names "
+                        "may use regular expressions for wildcard matches.")
     options = parser.parse_args()
 
     return options
 
 
 def main():
+    """Process qstat and print formatted output to terminal."""
 
     # Get data
     jobs = qstat()
     options = commandline()
 
-    # how wide?
-    name_width = max(len(x['JB_name']) for x in jobs)
+    # Use regular expressions to prune the job list
+    if options.user is not None:
+        user_regexes = [re.compile('^{}$'.format(user_regex))
+                        for user_regex in options.user]
+        jobs = [job for job in jobs if
+                any(user_regex.match(job['JB_owner'])
+                    for user_regex in user_regexes)]
+
+    # how wide? include 8 for empty case so header looks reasonable
+    name_width = max([8] + [len(job['JB_name']) for job in jobs])
 
     # header              "xky        "      job age             t
     print("job-ID   prior    user          state  run/wait time      queue "
@@ -55,10 +69,6 @@ def main():
     # Track if we are in pending jobs to add a separator
     pending_break = False
     for job in jobs:
-        # Skip unwanted users if users requested
-        if options.user is not None and job['JB_owner'] not in options.user:
-            continue
-
         if not pending_break and 'q' in job['state']:
             print("-"*(82+name_width))
             pending_break = True
@@ -77,8 +87,7 @@ def main():
 
         print("{0[JB_job_number]:<7s}  {0[JAT_prio]:<7s}  {0[JB_owner]:<12}  "
               "{0[state]:<5s}  {runtime:>17s}  {queue:<15}  {0[slots]:>5}  "
-              "{0[JB_name]:<{name_width}s}".format(job, name_width=name_width,
-                                                   runtime=runtime, queue=queue))
+              "{0[JB_name]:<s}".format(job, runtime=runtime, queue=queue))
 
     return
 

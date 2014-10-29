@@ -14,6 +14,11 @@ the new commands:
   * A tweaked qstat that shows the full job name and has age of jobs instead
     of time.
 
+* ``scrpit-submit``
+
+  * Submit generic jobs to the cluster. Includes tweaks to keep parallel
+    jobs within the same node as much as possible.
+
 
 Feature Requests
 ================
