@@ -8,6 +8,7 @@ or script on a node.
 """
 
 import argparse
+import os
 import re
 import subprocess
 
@@ -81,6 +82,12 @@ else:
     args.threads = 1
 
 
+# Gridengine filters these out, so all the modules that depend on
+# these get messed up. Remember these are 'None' for the empty case.
+args.pythonpath = os.getenv('PYTHONPATH') or ''
+args.ld_library_path = os.getenv('LD_LIBRARY_PATH') or ''
+
+
 submission_script = """
 #!/bin/bash
 
@@ -100,6 +107,9 @@ submission_script = """
 #$ -N s.{args.job_name}
 ### Allocate all the processes on the same node
 #$ -pe {args.pe} {args.ncpu}
+
+export PYTHONPATH=$PYTHONPATH:{args.pythonpath}
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{args.ld_library_path}
 
 export OMP_NUM_THREADS={args.threads}
 ulimit -s unlimited
