@@ -11,7 +11,10 @@ Reads SGE output as XML and parses into python dictionaries.
 from collections import OrderedDict
 from subprocess import Popen, PIPE
 
-from lxml import etree
+try:
+    from lxml.etree import fromstring
+except ImportError:
+    from xml.etree.ElementTree import fromstring
 
 
 def qstat():
@@ -19,11 +22,11 @@ def qstat():
 
     # output of jobs in xml
     qstat_str = Popen(['qstat', '-u', '*', '-xml'], stdout=PIPE).stdout.read()
-    qtree = etree.fromstring(qstat_str)
+    qtree = fromstring(qstat_str)
 
     jobs = []
 
-    #queue info
+    # queue info
     for job_lists in qtree:  # queue_info and job_info
         for job in job_lists:
             job_dict = {}
@@ -41,13 +44,13 @@ def qstatf():
     # full output of everything in xml
     qstat_args = ['qstat', '-u', '*', '-f', '-xml']
     qstat_str = Popen(qstat_args, stdout=PIPE).stdout.read()
-    qtree = etree.fromstring(qstat_str)
+    qtree = fromstring(qstat_str)
 
     all_queues = OrderedDict()
     users = OrderedDict()
     jobs = []
 
-    #queue info
+    # queue info
     for queue in qtree[0]:
         # queue info
         this_node = {'job_list': []}
@@ -66,10 +69,14 @@ def qstatf():
             else:
                 this_node[qitem.tag] = qitem.text
 
-        #remove "all.q@' and '.local'
-        this_node['name'] = this_node['name'].split('@')[1].split('.')[0]
+        # remove "all.q@' and '.local'
+        node = this_node['name'].split('@')[1].split('.')[0]
+        this_node['name'] = node
         this_node['slots_total'] = int(this_node['slots_total'])
-        all_queues[this_node['name']] = this_node
+        if node in all_queues:
+            all_queues[node]['job_list'].extend(this_node['job_list'])
+        else:
+            all_queues[node] = this_node
 
     # rest of the job info
     for wait_job in qtree[1]:

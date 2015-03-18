@@ -6,7 +6,9 @@ Pretty summary of what's going on in the queue.
 
 """
 
+from __future__ import print_function
 import getpass
+import re
 import sys
 from os.path import dirname, realpath
 
@@ -19,10 +21,9 @@ from wsge.qstat import qstatf
 
 def numeric_sort(name):
     """
-    Split the name into a tuple with the last two items as integers.
+    Pull all digits from the name and make a list with all number in it.
     """
-    name = name.split('-')
-    return int(name[-2]), int(name[-1])
+    return [int(x) for x in re.findall(r'[0-9]+', name)]
 
 
 def main():
@@ -50,7 +51,7 @@ def main():
     # Make a screen to manipulate since things are in columns
     width = 120
     height = 42
-    screen = np.array([[" " for _i in range(width)] for _j in range(height)],
+    screen = np.array([[" " for _ in range(width)] for _ in range(height)],
                       dtype='U36')
     # Column variables
     max_head = 7
@@ -175,7 +176,9 @@ def main():
         screen[row, lcolumn:lcolumn+len(nline)] = nline
         row += 1
 
-    print("\n".join("".join(x for x in line).rstrip() for line in screen))
+    lines = ("".join(x for x in line).rstrip() for line in screen)
+    text = "\n".join(line for line in lines if line.strip())
+    print(text)
     sys.stdout.flush()
 
 if __name__ == '__main__':
