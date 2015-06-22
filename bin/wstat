@@ -16,13 +16,14 @@ import re
 import signal
 import sys
 from datetime import datetime
+from getpass import getuser
 from os.path import dirname, realpath
 
 from dateutil.parser import parse
 
 # Put the parent directory first in the path
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
-from wsge.qstat import qstat
+from wsge.qstat import qstat, qstatf
 
 # If output goes into head or less without finishing, it will terminate with
 # IOError, this makes pipe errors get ignored.
@@ -37,21 +38,63 @@ def commandline():
                         "may use regular expressions for wildcard matches.")
     parser.add_argument("-q", "--queue", action='store_true',
                         help="Show queue name in addition to the node name.")
+    parser.add_argument("-f", "--full", action='store_true',
+                        help="Show full output by nodes, like 'qstat -f'.")
+    parser.add_argument("-n", "--no-colour", "--no-color", dest='colour',
+                        action="store_false", help="Turn off coloured output.")
     options = parser.parse_args()
 
     return options
 
 
-def main():
+class ColourDict(dict):
+    """
+    Store items as colourised versions of themselves, changing the colour
+    for each new item.
+    """
+    def __init__(self, width=12, mapping=None):
+        self.width = width
+        super(ColourDict, self).__init__(self)
+        if mapping is not None:
+            self.update(mapping)
+
+    def __missing__(self, key):
+        if not hasattr(self, 'counter'):
+            self.counter = 1
+        self[key] = "\033[38;5;{colour_id}m{key:<{width}}\033[0m".format(
+            colour_id=self.counter, key=key, width=self.width)
+        self.counter += 1
+        return self[key]
+
+class AutoDict(dict):
+    """
+    Add the missing entries as themselves to a dictionary.
+    """
+    def __init__(self, width=12):
+        self.width = width
+        super(AutoDict, self).__init__(self)
+
+    def __missing__(self, key):
+        self[key] = "{key:<{width}}".format(key=key, width=self.width)
+        return self[key]
+
+
+def numeric_sort(name):
+    """
+    Pull all digits from the name and make a list with all number in it.
+    """
+    return [int(x) for x in re.findall(r'[0-9]+', name)]
+
+
+def qstat_priority(options):
     """Process qstat and print formatted output to terminal."""
 
     # Get data
     jobs = qstat()
-    options = commandline()
 
     # Use regular expressions to prune the job list
     if options.user is not None:
-        user_regexes = [re.compile('^{}$'.format(user_regex))
+        user_regexes = [re.compile('^{0}$'.format(user_regex))
                         for user_regex in options.user]
         jobs = [job for job in jobs if
                 any(user_regex.match(job['JB_owner'])
@@ -96,6 +139,88 @@ def main():
               "{0[JB_name]:<s}".format(job, runtime=runtime, queue=queue))
 
     return
+
+
+def qstat_full(options):
+    """
+    Process jobs and arrange like 'qstst -f', but nicer.
+    """
+
+    all_queues, users, jobs = qstatf()
+
+    # Use regular expressions to prune the job list
+    if options.user is not None:
+        user_regexes = [re.compile('^{0}$'.format(user_regex))
+                        for user_regex in options.user]
+        jobs = [job for job in jobs if
+                any(user_regex.match(job['JB_owner'])
+                    for user_regex in user_regexes)]
+
+    # how wide? include 8 for empty case so header looks reasonable
+    name_width = max([8] + [len(job['JB_name']) for job in jobs])
+
+    # header              "xky        "      job age             t
+    print("job-ID   prior      user          state  run/wait time      queue "
+          "           slots  %-*s" % (name_width, 'name'))
+
+    # Get rid of the microseconds so that the output is only reported to the
+    # second
+    now = datetime.now().replace(microsecond=0)
+
+    # Setup how people's jobs look:
+    if options.colour:
+        this_user = {getuser():
+                     "\033[104;39;1m{user:<12}\033[0m".format(user=getuser())}
+        usercodes = ColourDict(width=12, mapping=this_user)
+        queues = ColourDict(width=15)
+    else:
+        usercodes = AutoDict(width=15)
+        queues = AutoDict(width=15)
+
+    #TODO add resources form qstat -F
+
+    jobfmt = ("{0[JB_job_number]:<7s}  {0[JAT_prio]:<9s}  {user}  "
+              "{0[state]:<5s}  {runtime:>17s}  {queue}  {0[slots]:>5}  "
+              "{0[JB_name]:<s}")
+
+    # ['name', 'job_list', 'slots_total', 'slots_resv', 'arch', 'qtype', 'slots_used']
+    for node in sorted(all_queues, key=numeric_sort):
+        print("-"*(84+name_width))
+        print(" {node} {nodeinfo[slots_used]}/{nodeinfo[slots_total]} "
+              "".format(node=node, nodeinfo=all_queues[node]))
+        print(all_queues[node]['resource'])
+        print("-"*(84+name_width))
+
+        for job in jobs:
+            if 'node' in job and job['node'] == node:
+                user = usercodes[job['JB_owner']]
+                runtime = now - parse(job['JAT_start_time'])
+                queue = queues[job['JB_queue'].split('@')[0]]
+                print(jobfmt.format(job, user=user, runtime=runtime,
+                                    queue=queue))
+
+    print("-"*(84+name_width))
+    print(" Pending jobs ")
+    print("-"*(84+name_width))
+    for job in jobs:
+        if 'q' in job['state']:
+            user = usercodes[job['JB_owner']]
+            runtime = now - parse(job['JB_submission_time'])
+            queue = ' '*15  # Expects 15 wide (ansi codes excepted)
+            print(jobfmt.format(job, user=user, runtime=runtime, queue=queue))
+
+    return
+
+
+def main():
+    """Process options and call the qstat formatting code."""
+    options = commandline()
+
+    if options.full:
+        qstat_full(options)
+    else:
+        qstat_priority(options)
+
 
 if __name__ == '__main__':
     main()

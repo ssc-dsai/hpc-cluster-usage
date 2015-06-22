@@ -42,7 +42,7 @@ def qstatf():
     """Return qstat -f output as a dictionary."""
 
     # full output of everything in xml
-    qstat_args = ['qstat', '-u', '*', '-f', '-xml']
+    qstat_args = ['qstat', '-u', '*', '-F', '-xml']
     qstat_str = Popen(qstat_args, stdout=PIPE).stdout.read()
     qtree = fromstring(qstat_str)
 
@@ -53,7 +53,8 @@ def qstatf():
     # queue info
     for queue in qtree[0]:
         # queue info
-        this_node = {'job_list': []}
+        this_node = {'job_list': [],
+                     'resource': {}}
         for qitem in queue:
             if qitem.tag == 'job_list':
                 job_dict = {}
@@ -61,11 +62,14 @@ def qstatf():
                     job_dict[jitem.tag] = jitem.text
                 job_dict['slots'] = int(job_dict['slots'])
                 job_dict['JB_queue'] = this_node['name']
+                job_dict['node'] = this_node['name'].split('@')[1].split('.')[0]
                 if job_dict['JB_owner'] not in users:
                     users[job_dict['JB_owner']] = []
                 users[job_dict['JB_owner']].append(job_dict)
                 this_node['job_list'].append(job_dict)
                 jobs.append(job_dict)
+            elif qitem.tag == 'resource':
+                this_node['resource'][qitem.attrib['name']] = qitem.text
             else:
                 this_node[qitem.tag] = qitem.text
 
@@ -89,4 +93,4 @@ def qstatf():
         users[job_dict['JB_owner']].append(job_dict)
         jobs.append(job_dict)
 
-    return all_queues, users
+    return all_queues, users, jobs
