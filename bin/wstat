@@ -155,13 +155,22 @@ def qstat_priority(options):
                 any(user_regex.match(job['JB_owner'])
                     for user_regex in user_regexes)]
 
+    # are there job arrays?
+    task_width = max([len(job.get('tasks', '')) for job in jobs] + [0])
+    if task_width > 0:
+        task_width += 1
+        task_str = ' tasks'
+    else:
+        task_str = ''
+
     # how wide? include 8 for empty case so header looks reasonable
     name_width = max([8] + [len(job['JB_name']) for job in jobs])
 
     # header              "xky        "      job age             t
-    print("job-ID   prior      user          state  run/wait time      queue "
-          "           slots  %-*s" % (name_width, 'name'))
-    print("—"*(84+name_width))
+    print("job-ID   prior      user          state  run/wait time       queue"
+          "            slots  {1:{0}}{2}"
+          "".format(name_width, 'name', task_str))
+    print("—"*(85+name_width+task_width))
 
     # Get rid of the microseconds so that the output is only reported to the
     # second
@@ -171,7 +180,7 @@ def qstat_priority(options):
     pending_break = False
     for job in jobs:
         if not pending_break and 'q' in job['state']:
-            print("—"*(84+name_width))
+            print("—"*(85+name_width+task_width))
             pending_break = True
 
         # Parse the dates into deltas -> more useful?
@@ -189,9 +198,17 @@ def qstat_priority(options):
         else:
             queue = ''
 
+        # job_array?
+        if 'tasks' in job:
+            tasks = ' ' + job['tasks']
+        else:
+            tasks = ''
+
         print("{0[JB_job_number]:<7s}  {0[JAT_prio]:<9s}  {0[JB_owner]:<12}  "
-              "{0[state]:<5s}  {runtime:>17s}  {queue:<15}  {0[slots]:>5}  "
-              "{0[JB_name]:<s}".format(job, runtime=runtime, queue=queue))
+              "{0[state]:<5s}  {runtime:>18s}  {queue:<15}  {0[slots]:>5}  "
+              "{0[JB_name]:<{name_width}s}{tasks:<s}"
+              "".format(job, runtime=runtime, queue=queue,
+                        name_width=name_width, tasks=tasks))
 
     return
 
@@ -211,12 +228,21 @@ def qstat_full(options):
                 any(user_regex.match(job['JB_owner'])
                     for user_regex in user_regexes)]
 
+    # are there job arrays?
+    task_width = max([len(job.get('tasks', '')) for job in jobs] + [0])
+    if task_width > 0:
+        task_width += 1
+        task_str = ' tasks'
+    else:
+        task_str = ''
+
     # how wide? include 8 for empty case so header looks reasonable
     name_width = max([8] + [len(job['JB_name']) for job in jobs])
 
-    # header              "xky        "      job age             t
-    print("job-ID   prior      user          state  run/wait time      queue "
-          "           slots  %-*s" % (name_width, 'name'))
+    # header
+    print("job-ID   prior      user          state  run/wait time       queue"
+          "            slots  {1:{0}}{2}"
+          "".format(name_width, 'name', task_str))
 
     # Get rid of the microseconds so that the output is only reported to the
     # second
@@ -229,16 +255,16 @@ def qstat_full(options):
         usercodes = ColourDict(width=12, mapping=this_user)
         queues = ColourDict(width=15)
     else:
-        usercodes = AutoDict(width=15)
+        usercodes = AutoDict(width=12)
         queues = AutoDict(width=15)
 
     jobfmt = ("{0[JB_job_number]:<7s}  {0[JAT_prio]:<9s}  {user}  "
-              "{0[state]:<5s}  {runtime:>17s}  {queue}  {0[slots]:>5}  "
-              "{0[JB_name]:<s}")
+              "{0[state]:<5s}  {runtime:>18s}  {queue}  {0[slots]:>5}  "
+              "{0[JB_name]:<{name_width}s}{tasks:<s}")
 
     for node in sorted(all_queues, key=numeric_sort):
         info = all_queues[node]
-        print("—"*(84+name_width))
+        print("—"*(85+name_width+task_width))
         #print(all_queues[node]['resource'])
 
         nodestr = ["\033[1m>> {node:10} ".format(node=node, nodeinfo=info),
@@ -261,18 +287,28 @@ def qstat_full(options):
                 user = usercodes[job['JB_owner']]
                 runtime = now - parse(job['JAT_start_time'])
                 queue = queues[job['JB_queue'].split('@')[0]]
+                if 'tasks' in job:
+                    tasks = ' ' + job['tasks']
+                else:
+                    tasks = ''
                 print(jobfmt.format(job, user=user, runtime=runtime,
-                                    queue=queue))
+                                    queue=queue, tasks=tasks,
+                                    name_width=name_width))
 
-    print("—"*(84+name_width))
+    print("—"*(85+name_width+task_width))
     print(" Pending jobs ")
-    print("—"*(84+name_width))
+    print("—"*(85+name_width+task_width))
     for job in jobs:
         if 'q' in job['state']:
             user = usercodes[job['JB_owner']]
             runtime = now - parse(job['JB_submission_time'])
             queue = ' '*15  # Expects 15 wide (ansi codes excepted)
-            print(jobfmt.format(job, user=user, runtime=runtime, queue=queue))
+            if 'tasks' in job:
+                tasks = ' ' + job['tasks']
+            else:
+                tasks = ''
+            print(jobfmt.format(job, user=user, runtime=runtime, queue=queue,
+                                tasks=tasks, name_width=name_width))
 
     return
 
