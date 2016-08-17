@@ -15,7 +15,7 @@ setup(name='wsge',
       url='http://bitbucket.org/tdaff/wsge/',
       packages=['wsge'],
       scripts=scripts,
-      requires=['numpy', 'python_dateutil'],
+      install_requires=['numpy', 'python_dateutil'],
       extras_requires={
           'lxml': 'lxml'},
       classifiers=["Programming Language :: Python",
