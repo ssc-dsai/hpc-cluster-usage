@@ -1,7 +1,7 @@
-WSGE
-----
+``wsge``
+--------
 
-Some tools to make pretty outputs of GridEngine job information. A few of
+Some tools to make friendly outputs of GridEngine job information. A few of
 the new commands:
 
 * ``cluster_stat``
@@ -31,8 +31,9 @@ Installation
 ============
 
 Setup as a Python package so that the modules are in your ``PYTHONPATH`` and
-individual scripts are in your ``PATH``.
+individual scripts are in your ``PATH``. In the source directory:
 
 .. code-block::
 
-    python setup.py install
+    pip install --user .
+
