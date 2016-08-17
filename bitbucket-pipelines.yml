@@ -1,0 +1,11 @@
+# You can use a Docker image from Docker Hub or your own container
+# registry for your build environment.
+image: python:latest
+
+pipelines:
+  default:
+    - step:
+        script:
+          - pip install .
+          - script-submit --help
+          - wstat --help
