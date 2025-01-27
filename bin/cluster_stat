@@ -6,7 +6,6 @@ Pretty summary of what's going on in the queue.
 
 """
 
-from __future__ import print_function
 import getpass
 import re
 import sys
@@ -16,7 +15,7 @@ import numpy as np
 
 # Put the parent directory first in the path
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
-from wsge.qstat import qstatf
+from wsge.qstat import qstatf, squeuef
 
 
 def numeric_sort(name):
@@ -34,8 +33,9 @@ def main():
     :return: Nothing
     """
 
+    squeuef()
+    sys.exit()
     all_queues, users, _jobs = qstatf()
-
     # Setup how people's jobs look:
     usercodes = {}
     for user_id, user in enumerate(users, start=1):

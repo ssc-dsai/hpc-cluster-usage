@@ -10,6 +10,7 @@ Reads SGE output as XML and parses into python dictionaries.
 
 from collections import OrderedDict
 from subprocess import Popen, PIPE
+import json
 
 try:
     from lxml.etree import fromstring
@@ -37,6 +38,13 @@ def qstat():
 
     return jobs
 
+def squeuef():
+    """Return squeue output as a dictionary"""
+
+    squeue_args = ['squeue', '-M', 'gpsc5', '--json']
+    squeue_str = Popen(squeue_args, stdout=PIPE).stdout.read()
+    squeue_obj = json.loads(squeue_str)
+    print(squeue_str)
 
 def qstatf():
     """Return qstat -f output as a dictionary."""
