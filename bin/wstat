@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 """
-Wooki job info.
 
 Shows job information, like qstat, but customised for jobs on the local
 cluster. Shows all user jobs by default, use the '--user' argument to
@@ -23,7 +22,7 @@ from dateutil.parser import parse
 
 # Put the parent directory first in the path
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
-from wsge.qstat import qstat, qstatf
+from wsge.sqstat import squeuef, qstat, qstatf
 
 # If output goes into head or less without finishing, it will terminate with
 # IOError, this makes pipe errors get ignored.
@@ -140,6 +139,12 @@ def numeric_sort(name):
     """
     return [int(x) for x in re.findall(r'[0-9]+', name)]
 
+def squeue(options):
+    """Process squeue and print formatted output to terminal."""
+
+    # Get data
+    jobs = squeuef()
+    print(jobs.keys())
 
 def qstat_priority(options):
     """Process qstat and print formatted output to terminal."""
@@ -316,11 +321,12 @@ def qstat_full(options):
 def main():
     """Process options and call the qstat formatting code."""
     options = commandline()
+    squeue(options)
 
-    if options.full:
-        qstat_full(options)
-    else:
-        qstat_priority(options)
+    #if options.full:
+    #    qstat_full(options)
+    #else:
+    #    qstat_priority(options)
 
 
 if __name__ == '__main__':

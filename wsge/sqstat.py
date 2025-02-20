@@ -41,10 +41,28 @@ def qstat():
 def squeuef():
     """Return squeue output as a dictionary"""
 
-    squeue_args = ['squeue', '-M', 'gpsc5', '--json']
+    squeue_args = ['squeue', '-M', 'all', '--json']
     squeue_str = Popen(squeue_args, stdout=PIPE).stdout.read()
-    squeue_obj = json.loads(squeue_str)
-    print(squeue_str)
+    # have to insert curly braces at the outer level (CLUSTER)
+    added_braces = []
+    for id, line in enumerate(squeue_str.decode('utf-8').split("\n")):
+        nline = line.strip()
+        if nline.startswith('CLUSTER'):
+            cid = "\""+nline.split(":")[-1].strip()+"\""
+            if id != 0:
+                #added_braces.append("},".rjust(5))
+                added_braces[-1] = added_braces[-1] + ","
+                added_braces.append(f"{cid}:")
+            else:
+                added_braces.append("{")
+                added_braces.append(f"{cid}:")
+
+        elif (nline):
+            added_braces.append(nline)
+
+    added_braces.append("}")
+    squeue_obj = json.loads("\n".join(added_braces))
+    return squeue_obj
 
 def qstatf():
     """Return qstat -f output as a dictionary."""
