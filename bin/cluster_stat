@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.10
 # -*- coding: utf-8 -*-
 
 """
@@ -15,7 +15,8 @@ import numpy as np
 
 # Put the parent directory first in the path
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
-from wsge.qstat import qstatf, squeuef
+from wsge.sqstat import qstatf, squeuef
+from wsge.sqstat import squeuef_local, sinfof_local
 
 
 def numeric_sort(name):

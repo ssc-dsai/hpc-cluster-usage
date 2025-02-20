@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.10
 # -*- coding: utf-8 -*-
 
 """
@@ -23,6 +23,7 @@ from dateutil.parser import parse
 # Put the parent directory first in the path
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
 from wsge.sqstat import sinfof, squeuef, qstat, qstatf
+from wsge.sqstat import sinfof_local, squeuef_local
 
 # If output goes into head or less without finishing, it will terminate with
 # IOError, this makes pipe errors get ignored.
@@ -143,7 +144,7 @@ def squeue(options):
     """Process squeue and print formatted output to terminal."""
     cluster="gpsc5"
     # Get data
-    jobs = squeuef()
+    jobs = squeuef_local()
     #for key in ['jobs', 'last_backfill', 'last_update', 'meta', 'errors', 'warnings']:
         #print(f"\n\n\n*****{key}*****\n\n\n\n")
         #print(jobs[cluster][key])
@@ -156,7 +157,7 @@ def squeue(options):
     #    print(f"tasks: {job['tasks']}")
     #    print(f"nodes: {job['nodes']}")
     
-    nodes = sinfof()
+    nodes = sinfof_local()
     for info in nodes[cluster]['sinfo']:
         # dict_keys(['port', 'node', 'nodes', 'cpus', 'sockets', 'cores', 'threads', 'disk', 'memory', 'weight', 'features', 'gres', 'cluster', 'comment', 'extra', 'reason', 'reservation', 'partition'])
         
