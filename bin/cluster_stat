@@ -34,7 +34,6 @@ def main():
     """
 
     squeuef()
-    sys.exit()
     all_queues, users, _jobs = qstatf()
     # Setup how people's jobs look:
     usercodes = {}

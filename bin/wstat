@@ -22,7 +22,7 @@ from dateutil.parser import parse
 
 # Put the parent directory first in the path
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
-from wsge.sqstat import squeuef, qstat, qstatf
+from wsge.sqstat import sinfof, squeuef, qstat, qstatf
 
 # If output goes into head or less without finishing, it will terminate with
 # IOError, this makes pipe errors get ignored.
@@ -141,10 +141,32 @@ def numeric_sort(name):
 
 def squeue(options):
     """Process squeue and print formatted output to terminal."""
-
+    cluster="gpsc5"
     # Get data
     jobs = squeuef()
-    print(jobs.keys())
+    #for key in ['jobs', 'last_backfill', 'last_update', 'meta', 'errors', 'warnings']:
+        #print(f"\n\n\n*****{key}*****\n\n\n\n")
+        #print(jobs[cluster][key])
+
+# ['account', 'accrue_time', 'admin_comment', 'allocating_node', 'array_job_id', 'array_task_id', 'array_max_tasks', 'array_task_string', 'association_id', 'batch_features', 'batch_flag', 'batch_host', 'flags', 'burst_buffer', 'burst_buffer_state', 'cluster', 'cluster_features', 'command', 'comment', 'container', 'container_id', 'contiguous', 'core_spec', 'thread_spec', 'cores_per_socket', 'billable_tres', 'cpus_per_task', 'cpu_frequency_minimum', 'cpu_frequency_maximum', 'cpu_frequency_governor', 'cpus_per_tres', 'cron', 'deadline', 'delay_boot', 'dependency', 'derived_exit_code', 'eligible_time', 'end_time', 'excluded_nodes', 'exit_code', 'extra', 'failed_node', 'features', 'federation_origin', 'federation_siblings_active', 'federation_siblings_viable', 'gres_detail', 'group_id', 'group_name', 'het_job_id', 'het_job_id_set', 'het_job_offset', 'job_id', 'job_resources', 'job_size_str', 'job_state', 'last_sched_evaluation', 'licenses', 'mail_type', 'mail_user', 'max_cpus', 'max_nodes', 'mcs_label', 'memory_per_tres', 'name', 'network', 'nodes', 'nice', 'tasks_per_core', 'tasks_per_tres', 'tasks_per_node', 'tasks_per_socket', 'tasks_per_board', 'cpus', 'node_count', 'tasks', 'partition', 'prefer', 'memory_per_cpu', 'memory_per_node', 'minimum_cpus_per_node', 'minimum_tmp_disk_per_node', 'power', 'preempt_time', 'preemptable_time', 'pre_sus_time', 'hold', 'priority', 'profile', 'qos', 'reboot', 'required_nodes', 'minimum_switches', 'requeue', 'resize_time', 'restart_cnt', 'resv_name', 'scheduled_nodes', 'selinux_context', 'shared', 'exclusive', 'oversubscribe', 'show_flags', 'sockets_per_board', 'sockets_per_node', 'start_time', 'state_description', 'state_reason', 'standard_error', 'standard_input', 'standard_output', 'submit_time', 'suspend_time', 'system_comment', 'time_limit', 'time_minimum', 'threads_per_core', 'tres_bind', 'tres_freq', 'tres_per_job', 'tres_per_node', 'tres_per_socket', 'tres_per_task', 'tres_req_str', 'tres_alloc_str', 'user_id', 'user_name', 'maximum_switch_wait_time', 'wckey', 'current_working_directory']
+    #for job in jobs[cluster]['jobs']:
+    #    print(f"user name: {job['user_name']}")
+    #    print(f"tres per node: {job['tres_per_node']}")
+    #    print(f"tasks per node: {job['tasks_per_node']}")
+    #    print(f"tasks: {job['tasks']}")
+    #    print(f"nodes: {job['nodes']}")
+    
+    nodes = sinfof()
+    for info in nodes[cluster]['sinfo']:
+        # dict_keys(['port', 'node', 'nodes', 'cpus', 'sockets', 'cores', 'threads', 'disk', 'memory', 'weight', 'features', 'gres', 'cluster', 'comment', 'extra', 'reason', 'reservation', 'partition'])
+        
+        # 'cpus' {'allocated': 0, 'idle': 40, 'other': 0, 'total': 40, 'minimum': 40, 'maximum': 40, 'load': {'minimum': 0, 'maximum': 0}, 'per_node': {'max': {'set': True, 'infinite': False, 'number': 40}}}
+        # 'nodes' {'allocated': 0, 'idle': 1, 'other': 0, 'total': 1, 'hostnames': [], 'addresses': [], 'nodes': ['ib12ln-007']}
+        # 'gres' {'total': 'gpu:tesla_v100-sxm2-16gb:4(S:0)', 'used': 'gpu:tesla_v100-sxm2-16gb:1(IDX:0)'}
+        # 'cores' {'minimum': 18, 'maximum': 18} <--- not sure if that's used?
+        #
+        print(info['cores'])
+        print(f"Node: {info['nodes']['nodes'][0]} allocated {info['cpus']['allocated']} idle {info['cpus']['idle']}")
 
 def qstat_priority(options):
     """Process qstat and print formatted output to terminal."""

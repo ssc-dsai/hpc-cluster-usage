@@ -38,6 +38,30 @@ def qstat():
 
     return jobs
 
+def sinfof():
+    #   sinfo -M all -a --Node --json
+    sinfo_args = ['sinfo', '-M', 'all', '--Node', '--json']
+    sinfo_str = Popen(sinfo_args, stdout=PIPE).stdout.read()
+    added_braces = []
+    for id, line in enumerate(sinfo_str.decode('utf-8').split("\n")):
+        nline = line.strip()
+        if nline.startswith('CLUSTER'):
+            cid = "\""+nline.split(":")[-1].strip()+"\""
+            if id != 0:
+                #added_braces.append("},".rjust(5))
+                added_braces[-1] = added_braces[-1] + ","
+                added_braces.append(f"{cid}:")
+            else:
+                added_braces.append("{")
+                added_braces.append(f"{cid}:")
+
+        elif (nline):
+            added_braces.append(nline)
+
+    added_braces.append("}")
+    sinfo_obj = json.loads("\n".join(added_braces))
+    return sinfo_obj
+
 def squeuef():
     """Return squeue output as a dictionary"""
 
@@ -62,6 +86,12 @@ def squeuef():
 
     added_braces.append("}")
     squeue_obj = json.loads("\n".join(added_braces))
+    # node
+    #   --- slots_total
+    #   --- state
+    # job_list
+    #   --- slots
+    #   --- JB_owner
     return squeue_obj
 
 def qstatf():
