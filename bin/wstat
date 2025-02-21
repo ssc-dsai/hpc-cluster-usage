@@ -167,7 +167,7 @@ def squeue(options):
         # 'cores' {'minimum': 18, 'maximum': 18} <--- not sure if that's used?
         #
         print(info['cores'])
-        print(f"Node: {info['nodes']['nodes'][0]} allocated {info['cpus']['allocated']} idle {info['cpus']['idle']}")
+        print(f"Node: {info['nodes']['nodes'][0]} allocated {info['cpus']['allocated']} idle {info['cpus']['idle']} total {info['cpus']['total']}")
 
 def qstat_priority(options):
     """Process qstat and print formatted output to terminal."""

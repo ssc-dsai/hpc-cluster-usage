@@ -34,7 +34,43 @@ def main():
     :return: Nothing
     """
 
-    squeuef()
+    squeue = squeuef_local()
+    cluster="gpsc7"
+    users = {}
+    for job in squeue[cluster]['jobs']:
+    #    print(f"user name: {job['user_name']}")
+    #    print(f"tres per node: {job['tres_per_node']}")
+    #    print(f"tasks per node: {job['tasks_per_node']}")
+    #    print(f"tasks: {job['tasks']}")
+    #    print(f"nodes: {job['nodes']}")
+        users.setdefault(job['user_name'], 0)
+        ntasks = job['tasks']['number']
+        users[job['user_name']] += ntasks
+        # present as a list but I only see one entry..
+        state = job['job_state'][0]
+        if state == "RUNNING":
+        
+            print(job.keys())
+            print(job['job_resources'])
+            resources = job['job_resources']['nodes']
+            if resources['count'] == 1:
+                continue
+            names = resources['list']
+            for i in resources['allocation']:
+                print(i['index'], i['name'],  i['cpus']['count'], i['cpus']['used'])
+                for socket in i['sockets']:
+                    print(f"socket: {socket['index']}")
+                    for core in socket['cores']:
+                        print(f"core: {core['index']} status: {core['status'][0]}")
+
+
+            sys.exit()
+
+            # {'select_type': ['CORE'], 'nodes': {'count': 1, 'select_type': ['ONE_ROW'], 'list': 'ib14be-128', 'whole': False, 'allocation': [{'index': 0, 'name': 'ib14be-128', 'cpus': {'count': 48, 'used': 0}, 'memory': {'used': 0, 'allocated': 348960}, 'sockets': [{'index': 0, 'cores': [{'index': 0, 'status': ['ALLOCATED']}, {'index': 1, 'status': ['ALLOCATED']}, {'index': 2, 'status': ['ALLOCATED']}, {'index': 3, 'status': ['ALLOCATED']}, {'index': 4, 'status': ['ALLOCATED']}, {'index': 5, 'status': ['ALLOCATED']}, {'index': 6, 'status': ['ALLOCATED']}, {'index': 7, 'status': ['ALLOCATED']}, {'index': 8, 'status': ['ALLOCATED']}, {'index': 9, 'status': ['ALLOCATED']}, {'index': 10, 'status': ['ALLOCATED']}, {'index': 11, 'status': ['ALLOCATED']}, {'index': 12, 'status': ['ALLOCATED']}, {'index': 13, 'status': ['ALLOCATED']}, {'index': 14, 'status': ['ALLOCATED']}, {'index': 15, 'status': ['ALLOCATED']}, {'index': 16, 'status': ['ALLOCATED']}, {'index': 17, 'status': ['ALLOCATED']}, {'index': 18, 'status': ['ALLOCATED']}, {'index': 19, 'status': ['ALLOCATED']}, {'index': 20, 'status': ['ALLOCATED']}, {'index': 21, 'status': ['ALLOCATED']}, {'index': 22, 'status': ['ALLOCATED']}, {'index': 23, 'status': ['ALLOCATED']}, {'index': 24, 'status': ['ALLOCATED']}, {'index': 25, 'status': ['ALLOCATED']}, {'index': 26, 'status': ['ALLOCATED']}, {'index': 27, 'status': ['ALLOCATED']}, {'index': 28, 'status': ['ALLOCATED']}, {'index': 29, 'status': ['ALLOCATED']}, {'index': 30, 'status': ['ALLOCATED']}, {'index': 31, 'status': ['ALLOCATED']}]}, {'index': 1, 'cores': [{'index': 0, 'status': ['ALLOCATED']}, {'index': 1, 'status': ['ALLOCATED']}, {'index': 2, 'status': ['ALLOCATED']}, {'index': 3, 'status': ['ALLOCATED']}, {'index': 4, 'status': ['ALLOCATED']}, {'index': 5, 'status': ['ALLOCATED']}, {'index': 6, 'status': ['ALLOCATED']}, {'index': 7, 'status': ['ALLOCATED']}, {'index': 8, 'status': ['ALLOCATED']}, {'index': 9, 'status': ['ALLOCATED']}, {'index': 10, 'status': ['ALLOCATED']}, {'index': 11, 'status': ['ALLOCATED']}, {'index': 12, 'status': ['ALLOCATED']}, {'index': 13, 'status': ['ALLOCATED']}, {'index': 14, 'status': ['ALLOCATED']}, {'index': 15, 'status': ['ALLOCATED']}, {'index': 16, 'status': ['UNALLOCATED']}, {'index': 17, 'status': ['UNALLOCATED']}, {'index': 18, 'status': ['UNALLOCATED']}, {'index': 19, 'status': ['UNALLOCATED']}, {'index': 20, 'status': ['UNALLOCATED']}, {'index': 21, 'status': ['UNALLOCATED']}, {'index': 22, 'status': ['UNALLOCATED']}, {'index': 23, 'status': ['UNALLOCATED']}, {'index': 24, 'status': ['UNALLOCATED']}, {'index': 25, 'status': ['UNALLOCATED']}, {'index': 26, 'status': ['UNALLOCATED']}, {'index': 27, 'status': ['UNALLOCATED']}, {'index': 28, 'status': ['UNALLOCATED']}, {'index': 29, 'status': ['UNALLOCATED']}, {'index': 30, 'status': ['UNALLOCATED']}, {'index': 31, 'status': ['UNALLOCATED']}]}]}]}, 'cpus': 48, 'threads_per_core': {'set': False, 'infinite': False, 'number': 0}}
+    print(users)
+    sinfo = sinfof_local()
+    sys.exit()
+
     all_queues, users, _jobs = qstatf()
     # Setup how people's jobs look:
     usercodes = {}
@@ -65,6 +101,9 @@ def main():
 
     used, available, total = 0, 0, 0
 
+    # all_queries lists jobs by node
+    # sinfo doesn't have job info, just lists all the nodes and cpus used.
+    # squeue has jobs
     for node in sorted(all_queues, key=numeric_sort):
 
         # move to next column at certain nodes
