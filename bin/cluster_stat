@@ -10,6 +10,7 @@ import getpass
 import re
 import sys
 from os.path import dirname, realpath
+import json
 
 import numpy as np
 
@@ -35,8 +36,33 @@ def main():
     """
 
     squeue = squeuef_local()
-    cluster="gpsc7"
+    sinfo = sinfof_local()
+    cluster="gpsc5"
     users = {}
+    node_data = {}
+
+    for info in sinfo[cluster]['sinfo']:
+        node_name = info['nodes']['nodes'][0]
+        #print(json.dumps(info, sort_keys=True, indent=4, separators=(',', ': ')))
+        gpus_string = info['gres']['total']
+        gpu_name = None
+        gpu_count = 0
+        if (gpus_string):
+            gpus_list = re.split(r'[:()\s]+', gpus_string)
+            
+            sockets = re.search(r'\((.*?)\)',gpus_string).group(1)
+
+            gpu_name = gpus_list[1]
+            gpu_count = int(gpus_list[2])
+        node_data[node_name] = {'memory': info['memory']['maximum'],
+                                'memory_used': info['memory']['allocated'],
+                                'cpu_count': info['cpus']['total'],
+                                'cpu_used': info['cpus']['allocated'],
+                                'cpu_idle': info['cpus']['idle'],
+                                'core_count': info['cores']['maximum'],
+                                'gpu_name': gpu_name,
+                                'gpu_count': gpu_count,
+        }
     for job in squeue[cluster]['jobs']:
     #    print(f"user name: {job['user_name']}")
     #    print(f"tasks per node: {job['tasks_per_node']}")
@@ -49,24 +75,42 @@ def main():
         state = job['job_state'][0]
         if state == "RUNNING":
         
-            print(job.keys())
-            print(job['job_resources'])
+            #print(job.keys())
             resources = job['job_resources']['nodes']
             #if resources['count'] == 1:
             #    continue
-            print(f"tres per node: {job['tres_per_node']}")
             names = resources['list']
-            if names != "ib14gpu-003":
-                continue
-            for i in resources['allocation']:
-                print(i['index'], i['name'],  i['cpus']['count'], i['cpus']['used'])
-                for socket in i['sockets']:
-                    print(f"socket: {socket['index']}")
-                    for core in socket['cores']:
-                        print(f"core: {core['index']} status: {core['status'][0]}")
+            #if names != "ib14gpu-003":
+            #    continue
+            # GPU details are not explicit.
+            #print(json.dumps(job, sort_keys=True, indent=4, separators=(',', ': ')))
+            for gpus_string in job['gres_detail']:
+            
+                name_qty = re.sub(r'\([^)]*\)', '', gpus_string)
+                gpu_name = name_qty.split(":")[1]
+                n_gpus = int(name_qty.split(":")[-1])
+                gpu_idx = re.search(r'\((.*?)\)',gpus_string).group(1).split(":")[-1]
+                gpu_range = []
+                for i in gpu_idx.split(','):
+                    rangesplit = i.split("-")
+                    if len(rangesplit) == 1:
+                        gpu_range.append(int(rangesplit[0]))
+                    else:
+                        range_i = [int(j) for j in rangesplit]
+                        range_i[-1] += 1
+                        gpu_range += list(range(*range_i))
+                print(gpus_string, gpu_range, len(gpu_range) == n_gpus) 
+            #print(json.dumps(job, sort_keys=True, indent=4, separators=(',', ': ')))
+            #print(f"tres per node: {job['tres_per_node']}")
+            #for i in resources['allocation']:
+                #print(i['index'], i['name'],  i['cpus']['count'], i['cpus']['used'])
+            #    for socket in i['sockets']:
+            #        print(f"socket: {socket['index']}")
+            #        for core in socket['cores']:
+            #            print(f"core: {core['index']} status: {core['status'][0]}")
 
 
-            sys.exit()
+            #sys.exit()
 
             # {'select_type': ['CORE'], 'nodes': {'count': 1, 'select_type': ['ONE_ROW'], 'list': 'ib14be-128', 'whole': False, 'allocation': [{'index': 0, 'name': 'ib14be-128', 'cpus': {'count': 48, 'used': 0}, 'memory': {'used': 0, 'allocated': 348960}, 'sockets': [{'index': 0, 'cores': [{'index': 0, 'status': ['ALLOCATED']}, {'index': 1, 'status': ['ALLOCATED']}, {'index': 2, 'status': ['ALLOCATED']}, {'index': 3, 'status': ['ALLOCATED']}, {'index': 4, 'status': ['ALLOCATED']}, {'index': 5, 'status': ['ALLOCATED']}, {'index': 6, 'status': ['ALLOCATED']}, {'index': 7, 'status': ['ALLOCATED']}, {'index': 8, 'status': ['ALLOCATED']}, {'index': 9, 'status': ['ALLOCATED']}, {'index': 10, 'status': ['ALLOCATED']}, {'index': 11, 'status': ['ALLOCATED']}, {'index': 12, 'status': ['ALLOCATED']}, {'index': 13, 'status': ['ALLOCATED']}, {'index': 14, 'status': ['ALLOCATED']}, {'index': 15, 'status': ['ALLOCATED']}, {'index': 16, 'status': ['ALLOCATED']}, {'index': 17, 'status': ['ALLOCATED']}, {'index': 18, 'status': ['ALLOCATED']}, {'index': 19, 'status': ['ALLOCATED']}, {'index': 20, 'status': ['ALLOCATED']}, {'index': 21, 'status': ['ALLOCATED']}, {'index': 22, 'status': ['ALLOCATED']}, {'index': 23, 'status': ['ALLOCATED']}, {'index': 24, 'status': ['ALLOCATED']}, {'index': 25, 'status': ['ALLOCATED']}, {'index': 26, 'status': ['ALLOCATED']}, {'index': 27, 'status': ['ALLOCATED']}, {'index': 28, 'status': ['ALLOCATED']}, {'index': 29, 'status': ['ALLOCATED']}, {'index': 30, 'status': ['ALLOCATED']}, {'index': 31, 'status': ['ALLOCATED']}]}, {'index': 1, 'cores': [{'index': 0, 'status': ['ALLOCATED']}, {'index': 1, 'status': ['ALLOCATED']}, {'index': 2, 'status': ['ALLOCATED']}, {'index': 3, 'status': ['ALLOCATED']}, {'index': 4, 'status': ['ALLOCATED']}, {'index': 5, 'status': ['ALLOCATED']}, {'index': 6, 'status': ['ALLOCATED']}, {'index': 7, 'status': ['ALLOCATED']}, {'index': 8, 'status': ['ALLOCATED']}, {'index': 9, 'status': ['ALLOCATED']}, {'index': 10, 'status': ['ALLOCATED']}, {'index': 11, 'status': ['ALLOCATED']}, {'index': 12, 'status': ['ALLOCATED']}, {'index': 13, 'status': ['ALLOCATED']}, {'index': 14, 'status': ['ALLOCATED']}, {'index': 15, 'status': ['ALLOCATED']}, {'index': 16, 'status': ['UNALLOCATED']}, {'index': 17, 'status': ['UNALLOCATED']}, {'index': 18, 'status': ['UNALLOCATED']}, {'index': 19, 'status': ['UNALLOCATED']}, {'index': 20, 'status': ['UNALLOCATED']}, {'index': 21, 'status': ['UNALLOCATED']}, {'index': 22, 'status': ['UNALLOCATED']}, {'index': 23, 'status': ['UNALLOCATED']}, {'index': 24, 'status': ['UNALLOCATED']}, {'index': 25, 'status': ['UNALLOCATED']}, {'index': 26, 'status': ['UNALLOCATED']}, {'index': 27, 'status': ['UNALLOCATED']}, {'index': 28, 'status': ['UNALLOCATED']}, {'index': 29, 'status': ['UNALLOCATED']}, {'index': 30, 'status': ['UNALLOCATED']}, {'index': 31, 'status': ['UNALLOCATED']}]}]}]}, 'cpus': 48, 'threads_per_core': {'set': False, 'infinite': False, 'number': 0}}
     print(users)
