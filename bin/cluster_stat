@@ -11,6 +11,7 @@ import re
 import sys
 from os.path import dirname, realpath
 import json
+from collections import OrderedDict
 
 import numpy as np
 
@@ -38,12 +39,23 @@ def main():
     squeue = squeuef_local()
     sinfo = sinfof_local()
     cluster="gpsc7"
-    users = {}
+    users = OrderedDict()
     node_data = {}
+
+    for job in squeue[cluster]['jobs']:
+        users.setdefault(job['user_name'], 0)
+    usercodes = {}
+    for user_id, user in enumerate(users, start=1):
+        # can't get black!
+        user_id = user_id%15 
+        usercodes[user] = "\033[38;5;%im" % user_id
+
+    # Make current user always look the same
+    usercodes[getpass.getuser()] = "\033[104;39;1m"
 
     for info in sinfo[cluster]['sinfo']:
         node_name = info['nodes']['nodes'][0]
-        #print(json.dumps(info, sort_keys=True, indent=4, separators=(',', ': ')))
+        # print(json.dumps(info, sort_keys=True, indent=4, separators=(',', ': ')))
         gpus_string = info['gres']['total']
         gpu_name = None
         gpu_count = 0
@@ -63,6 +75,8 @@ def main():
                                 'gpu_name': gpu_name,
                                 'gpu_count': gpu_count,
         }
+    resource_list = {}
+    resource_seqpar = {}
     for job in squeue[cluster]['jobs']:
     #    print(f"user name: {job['user_name']}")
     #    print(f"tasks per node: {job['tasks_per_node']}")
@@ -87,16 +101,29 @@ def main():
             # iterate through cpu resources
             for r_node in resources['allocation']:
                 r_node_name = r_node['name']
+                # for some reason the gpus on gpsc7 have 256 cpus but 64 cores. Not sure what's going on there.
                 cpu_max = node_data[r_node_name]['cpu_count']
-                cores_array = np.zeros(cpu_max)
+
+                resource_list.setdefault(r_node_name, np.zeros(cpu_max, dtype=object))
+                resource_seqpar.setdefault(r_node_name, np.zeros(cpu_max, dtype=object))
+                cores_array = resource_list[r_node_name]
+                seqpar_array = resource_seqpar[r_node_name]
                 offset = 0
+                cpu_usage = 0
+                usage_idx = []
                 for socket in r_node['sockets']:
                     for core in socket['cores']:
                         idx = core['index']
                         if core['status'][0] == "ALLOCATED":
                             cores_array[offset] += 1
+                            cpu_usage += 1
+                            usage_idx.append(offset)
                         offset += 1
-                print(cores_array)
+                if cpu_usage > 1:
+                    seqpar_array[usage_idx] = f"{usercodes[job['user_name']]}=\033[0m"
+                else:
+                    seqpar_array[usage_idx] = f"{usercodes[job['user_name']]}+\033[0m"
+
             for gpus_string in job['gres_detail']:
             
                 name_qty = re.sub(r'\([^)]*\)', '', gpus_string)
@@ -124,9 +151,17 @@ def main():
 
 
             #sys.exit()
+    for node in sorted(resource_seqpar.keys()):
+        cores_array = resource_list[node]
+        empty_idx = np.where(cores_array == 0)
+        seqpar_array = resource_seqpar[node]
+        seqpar_array[empty_idx] = "\033[0m\033[42m \033[0m"
+
+        print(f"{node:>15}: {''.join(seqpar_array)}")
 
     print(users)
     sinfo = sinfof_local()
+    
     sys.exit()
 
     all_queues, users, _jobs = qstatf()
