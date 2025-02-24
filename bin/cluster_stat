@@ -37,7 +37,7 @@ def main():
 
     squeue = squeuef_local()
     sinfo = sinfof_local()
-    cluster="gpsc5"
+    cluster="gpsc7"
     users = {}
     node_data = {}
 
@@ -83,7 +83,20 @@ def main():
             #if names != "ib14gpu-003":
             #    continue
             # GPU details are not explicit.
-            #print(json.dumps(job, sort_keys=True, indent=4, separators=(',', ': ')))
+            #print(json.dumps(resources, sort_keys=True, indent=4, separators=(',', ': ')))
+            # iterate through cpu resources
+            for r_node in resources['allocation']:
+                r_node_name = r_node['name']
+                cpu_max = node_data[r_node_name]['cpu_count']
+                cores_array = np.zeros(cpu_max)
+                offset = 0
+                for socket in r_node['sockets']:
+                    for core in socket['cores']:
+                        idx = core['index']
+                        if core['status'][0] == "ALLOCATED":
+                            cores_array[offset] += 1
+                        offset += 1
+                print(cores_array)
             for gpus_string in job['gres_detail']:
             
                 name_qty = re.sub(r'\([^)]*\)', '', gpus_string)
@@ -112,7 +125,6 @@ def main():
 
             #sys.exit()
 
-            # {'select_type': ['CORE'], 'nodes': {'count': 1, 'select_type': ['ONE_ROW'], 'list': 'ib14be-128', 'whole': False, 'allocation': [{'index': 0, 'name': 'ib14be-128', 'cpus': {'count': 48, 'used': 0}, 'memory': {'used': 0, 'allocated': 348960}, 'sockets': [{'index': 0, 'cores': [{'index': 0, 'status': ['ALLOCATED']}, {'index': 1, 'status': ['ALLOCATED']}, {'index': 2, 'status': ['ALLOCATED']}, {'index': 3, 'status': ['ALLOCATED']}, {'index': 4, 'status': ['ALLOCATED']}, {'index': 5, 'status': ['ALLOCATED']}, {'index': 6, 'status': ['ALLOCATED']}, {'index': 7, 'status': ['ALLOCATED']}, {'index': 8, 'status': ['ALLOCATED']}, {'index': 9, 'status': ['ALLOCATED']}, {'index': 10, 'status': ['ALLOCATED']}, {'index': 11, 'status': ['ALLOCATED']}, {'index': 12, 'status': ['ALLOCATED']}, {'index': 13, 'status': ['ALLOCATED']}, {'index': 14, 'status': ['ALLOCATED']}, {'index': 15, 'status': ['ALLOCATED']}, {'index': 16, 'status': ['ALLOCATED']}, {'index': 17, 'status': ['ALLOCATED']}, {'index': 18, 'status': ['ALLOCATED']}, {'index': 19, 'status': ['ALLOCATED']}, {'index': 20, 'status': ['ALLOCATED']}, {'index': 21, 'status': ['ALLOCATED']}, {'index': 22, 'status': ['ALLOCATED']}, {'index': 23, 'status': ['ALLOCATED']}, {'index': 24, 'status': ['ALLOCATED']}, {'index': 25, 'status': ['ALLOCATED']}, {'index': 26, 'status': ['ALLOCATED']}, {'index': 27, 'status': ['ALLOCATED']}, {'index': 28, 'status': ['ALLOCATED']}, {'index': 29, 'status': ['ALLOCATED']}, {'index': 30, 'status': ['ALLOCATED']}, {'index': 31, 'status': ['ALLOCATED']}]}, {'index': 1, 'cores': [{'index': 0, 'status': ['ALLOCATED']}, {'index': 1, 'status': ['ALLOCATED']}, {'index': 2, 'status': ['ALLOCATED']}, {'index': 3, 'status': ['ALLOCATED']}, {'index': 4, 'status': ['ALLOCATED']}, {'index': 5, 'status': ['ALLOCATED']}, {'index': 6, 'status': ['ALLOCATED']}, {'index': 7, 'status': ['ALLOCATED']}, {'index': 8, 'status': ['ALLOCATED']}, {'index': 9, 'status': ['ALLOCATED']}, {'index': 10, 'status': ['ALLOCATED']}, {'index': 11, 'status': ['ALLOCATED']}, {'index': 12, 'status': ['ALLOCATED']}, {'index': 13, 'status': ['ALLOCATED']}, {'index': 14, 'status': ['ALLOCATED']}, {'index': 15, 'status': ['ALLOCATED']}, {'index': 16, 'status': ['UNALLOCATED']}, {'index': 17, 'status': ['UNALLOCATED']}, {'index': 18, 'status': ['UNALLOCATED']}, {'index': 19, 'status': ['UNALLOCATED']}, {'index': 20, 'status': ['UNALLOCATED']}, {'index': 21, 'status': ['UNALLOCATED']}, {'index': 22, 'status': ['UNALLOCATED']}, {'index': 23, 'status': ['UNALLOCATED']}, {'index': 24, 'status': ['UNALLOCATED']}, {'index': 25, 'status': ['UNALLOCATED']}, {'index': 26, 'status': ['UNALLOCATED']}, {'index': 27, 'status': ['UNALLOCATED']}, {'index': 28, 'status': ['UNALLOCATED']}, {'index': 29, 'status': ['UNALLOCATED']}, {'index': 30, 'status': ['UNALLOCATED']}, {'index': 31, 'status': ['UNALLOCATED']}]}]}]}, 'cpus': 48, 'threads_per_core': {'set': False, 'infinite': False, 'number': 0}}
     print(users)
     sinfo = sinfof_local()
     sys.exit()
