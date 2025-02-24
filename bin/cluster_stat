@@ -53,6 +53,8 @@ def main():
     # Make current user always look the same
     usercodes[getpass.getuser()] = "\033[104;39;1m"
 
+    resource_list = {}
+    resource_seqpar = {}
     for info in sinfo[cluster]['sinfo']:
         node_name = info['nodes']['nodes'][0]
         # print(json.dumps(info, sort_keys=True, indent=4, separators=(',', ': ')))
@@ -75,8 +77,9 @@ def main():
                                 'gpu_name': gpu_name,
                                 'gpu_count': gpu_count,
         }
-    resource_list = {}
-    resource_seqpar = {}
+        resource_list.setdefault(node_name, np.zeros(info['cpus']['total'], dtype=object))
+        resource_seqpar.setdefault(node_name, np.zeros(info['cpus']['total'], dtype=object))
+
     for job in squeue[cluster]['jobs']:
     #    print(f"user name: {job['user_name']}")
     #    print(f"tasks per node: {job['tasks_per_node']}")
@@ -104,8 +107,6 @@ def main():
                 # for some reason the gpus on gpsc7 have 256 cpus but 64 cores. Not sure what's going on there.
                 cpu_max = node_data[r_node_name]['cpu_count']
 
-                resource_list.setdefault(r_node_name, np.zeros(cpu_max, dtype=object))
-                resource_seqpar.setdefault(r_node_name, np.zeros(cpu_max, dtype=object))
                 cores_array = resource_list[r_node_name]
                 seqpar_array = resource_seqpar[r_node_name]
                 offset = 0
