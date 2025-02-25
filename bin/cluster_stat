@@ -54,7 +54,9 @@ def main():
     usercodes[getpass.getuser()] = "\033[104;39;1m"
 
     resource_list = {}
-    resource_seqpar = {}
+    resource_desc = {}
+    resource_gpu = {}
+    resource_gpu_desc = {}
     for info in sinfo[cluster]['sinfo']:
         node_name = info['nodes']['nodes'][0]
         # print(json.dumps(info, sort_keys=True, indent=4, separators=(',', ': ')))
@@ -68,6 +70,12 @@ def main():
 
             gpu_name = gpus_list[1]
             gpu_count = int(gpus_list[2])
+            resource_gpu.setdefault(node_name, {})
+            resource_gpu_desc.setdefault(node_name, {})
+            resource_gpu[node_name].setdefault(gpu_name, np.zeros(gpu_count, dtype=object))
+            resource_gpu_desc[node_name].setdefault(gpu_name, np.zeros(gpu_count, dtype=object))
+
+
         node_data[node_name] = {'memory': info['memory']['maximum'],
                                 'memory_used': info['memory']['allocated'],
                                 'cpu_count': info['cpus']['total'],
@@ -78,7 +86,7 @@ def main():
                                 'gpu_count': gpu_count,
         }
         resource_list.setdefault(node_name, np.zeros(info['cpus']['total'], dtype=object))
-        resource_seqpar.setdefault(node_name, np.zeros(info['cpus']['total'], dtype=object))
+        resource_desc.setdefault(node_name, np.zeros(info['cpus']['total'], dtype=object))
 
     for job in squeue[cluster]['jobs']:
     #    print(f"user name: {job['user_name']}")
@@ -102,13 +110,15 @@ def main():
             # GPU details are not explicit.
             #print(json.dumps(resources, sort_keys=True, indent=4, separators=(',', ': ')))
             # iterate through cpu resources
+            node_names = []
             for r_node in resources['allocation']:
                 r_node_name = r_node['name']
+                node_names.append(r_node_name)
                 # for some reason the gpus on gpsc7 have 256 cpus but 64 cores. Not sure what's going on there.
                 cpu_max = node_data[r_node_name]['cpu_count']
 
                 cores_array = resource_list[r_node_name]
-                seqpar_array = resource_seqpar[r_node_name]
+                desc_array = resource_desc[r_node_name]
                 offset = 0
                 cpu_usage = 0
                 usage_idx = []
@@ -121,12 +131,13 @@ def main():
                             usage_idx.append(offset)
                         offset += 1
                 if cpu_usage > 1:
-                    seqpar_array[usage_idx] = f"{usercodes[job['user_name']]}=\033[0m"
+                    desc_array[usage_idx] = f"{usercodes[job['user_name']]}=\033[0m"
                 else:
-                    seqpar_array[usage_idx] = f"{usercodes[job['user_name']]}+\033[0m"
+                    desc_array[usage_idx] = f"{usercodes[job['user_name']]}+\033[0m"
 
-            for gpus_string in job['gres_detail']:
-            
+            for gpuid, gpus_string in enumerate(job['gres_detail']):
+
+                #print(json.dumps(job, sort_keys=True, indent=4, separators=(',', ': ')))
                 name_qty = re.sub(r'\([^)]*\)', '', gpus_string)
                 gpu_name = name_qty.split(":")[1]
                 n_gpus = int(name_qty.split(":")[-1])
@@ -140,8 +151,14 @@ def main():
                         range_i = [int(j) for j in rangesplit]
                         range_i[-1] += 1
                         gpu_range += list(range(*range_i))
-                print(gpus_string, gpu_range, len(gpu_range) == n_gpus) 
-            #print(json.dumps(job, sort_keys=True, indent=4, separators=(',', ': ')))
+                if len(gpu_range) == 1:
+                    resource_gpu[node_names[gpuid]][gpu_name][gpu_range] += 1
+                    resource_gpu_desc[node_names[gpuid]][gpu_name][gpu_range] = f"{usercodes[job['user_name']]}+\033[0m"
+                else:
+                    resource_gpu[node_names[gpuid]][gpu_name][gpu_range] += 1 
+                    resource_gpu_desc[node_names[gpuid]][gpu_name][gpu_range] = f"{usercodes[job['user_name']]}+\033[0m"
+
+                #print(gpus_string, gpu_range, len(gpu_range) == n_gpus) 
             #print(f"tres per node: {job['tres_per_node']}")
             #for i in resources['allocation']:
                 #print(i['index'], i['name'],  i['cpus']['count'], i['cpus']['used'])
@@ -152,17 +169,41 @@ def main():
 
 
             #sys.exit()
-    for node in sorted(resource_seqpar.keys()):
+    for node in sorted(resource_desc.keys()):
         cores_array = resource_list[node]
         empty_idx = np.where(cores_array == 0)
-        seqpar_array = resource_seqpar[node]
-        seqpar_array[empty_idx] = "\033[0m\033[42m \033[0m"
+        desc_array = resource_desc[node]
+        desc_array[empty_idx] = "\033[0m\033[42m \033[0m"
 
-        print(f"{node:>15}: {''.join(seqpar_array)}")
+        print(f"{node:>15}: {''.join(desc_array)}")
+        try:
+            gpu_array = resource_gpu[node]
+            for gpu_name in sorted(gpu_array.keys()):
+                gpu_arr = gpu_array[gpu_name]
+                gpu_desc_array = resource_gpu_desc[node][gpu_name]
+                empty_idx = np.where(gpu_arr == 0)
+                gpu_desc_array[empty_idx] = "\033[0m\033[42m \033[0m"
+                print(f"{'╵---→  '+gpu_name:>30}: {''.join(gpu_desc_array)}")
 
-    print(users)
-    sinfo = sinfof_local()
-    
+        except KeyError:
+            pass
+
+    #print(users)
+    max_gpu = 0
+    min_gpu = 8
+    total_free = 0
+    for node in sorted(resource_gpu.keys()):
+        for gpu_name in sorted(resource_gpu[node].keys()):
+            gpu_arr = resource_gpu[node][gpu_name]
+            empty_idx = np.where(gpu_arr == 0)
+            n_empty = len(empty_idx[0])
+            if (n_empty != 0):
+                print(f"{node}:{gpu_name}:IDX({', '.join([str(i) for i in empty_idx[0]])})")
+                max_gpu = n_empty if n_empty > max_gpu else max_gpu
+                min_gpu = n_empty if n_empty < min_gpu else min_gpu
+                total_free += n_empty
+
+    print(f"Free GPUs = {total_free} ({min_gpu}, {max_gpu})")
     sys.exit()
 
     all_queues, users, _jobs = qstatf()
