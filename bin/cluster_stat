@@ -64,6 +64,7 @@ def main():
     :return: Nothing
     """
 
+    just_gpus = False
     #squeue = squeuef_local()
     #sinfo = sinfof_local()
     squeue = squeuef()
@@ -200,7 +201,9 @@ def main():
         desc_array[empty_idx] = "\033[0m\033[42m \033[0m"
         used_cores = np.where(cores_array > 0)[0].shape[0]
         total_cores = cores_array.shape[0]
-        print(f"{node:>15}: {''.join(desc_array)} ({used_cores} of {total_cores})")
+        # just print gpu nodes?
+        if not just_gpus:
+            print(f"{node:>15}: {''.join(desc_array)} ({used_cores} of {total_cores})")
         try:
             gpu_array = resource_gpu[node]
             for gpu_name in sorted(gpu_array.keys()):
@@ -210,7 +213,10 @@ def main():
                 gpu_desc_array[empty_idx] = "\033[0m\033[42m \033[0m"
                 used_gpus = np.where(gpu_arr > 0)[0].shape[0]
                 total_gpus = gpu_arr.shape[0]
-                print(f"{'╵---→  '+gpu_name:>30}: {''.join(gpu_desc_array)} ({used_gpus} of {total_gpus})")
+                intro_string = f"{'╵---→  '+gpu_name:>30}"
+                if just_gpus:
+                    intro_string = f"{node+' ('+gpu_name+')':>35}"
+                print(f"{intro_string}: {''.join(gpu_desc_array)} ({used_gpus} of {total_gpus})")
 
         except KeyError:
             pass
@@ -225,7 +231,9 @@ def main():
             empty_idx = np.where(gpu_arr == 0)
             n_empty = len(empty_idx[0])
             if (n_empty != 0):
-                print(f"{node}:{gpu_name}:IDX({', '.join([str(i) for i in empty_idx[0]])})")
+                range_string = ", ".join([str(i) for i in empty_idx[0]])
+                truncated_string = replace_with_ranges(range_string)
+                print(f"{node}:{gpu_name}:IDX({truncated_string})")
                 max_gpu = n_empty if n_empty > max_gpu else max_gpu
                 min_gpu = n_empty if n_empty < min_gpu else min_gpu
                 total_free += n_empty
