@@ -65,6 +65,7 @@ def main():
     """
 
     just_gpus = False
+    truncate_gpus = True 
     #squeue = squeuef_local()
     #sinfo = sinfof_local()
     squeue = squeuef()
@@ -201,9 +202,10 @@ def main():
         desc_array[empty_idx] = "\033[0m\033[42m \033[0m"
         used_cores = np.where(cores_array > 0)[0].shape[0]
         total_cores = cores_array.shape[0]
+        core_usage = ''.join(desc_array)
+        out_lines = []
+        node_printout = f"{node:>15}: {core_usage} ({used_cores} of {total_cores} cores)"
         # just print gpu nodes?
-        if not just_gpus:
-            print(f"{node:>15}: {''.join(desc_array)} ({used_cores} of {total_cores})")
         try:
             gpu_array = resource_gpu[node]
             for gpu_name in sorted(gpu_array.keys()):
@@ -213,18 +215,26 @@ def main():
                 gpu_desc_array[empty_idx] = "\033[0m\033[42m \033[0m"
                 used_gpus = np.where(gpu_arr > 0)[0].shape[0]
                 total_gpus = gpu_arr.shape[0]
-                intro_string = f"{'╵---→  '+gpu_name:>30}"
-                if just_gpus:
-                    intro_string = f"{node+' ('+gpu_name+')':>35}"
-                print(f"{intro_string}: {''.join(gpu_desc_array)} ({used_gpus} of {total_gpus})")
+                gpu_printout = ''.join(gpu_desc_array)
+
+                if truncate_gpus:
+                    intro = f"{node} ({used_cores} of {total_cores} cores)"
+                    out_lines.append(f"{intro:>35}: {gpu_printout} ({used_gpus} of {total_gpus} GPUs)")
+                else:
+                    out_lines.append(node_printout)
+                    out_lines.append(f"{'╵---→  '+gpu_name:>30} {gpu_printout} ({used_gpus} of {total_gpus} GPUs)")
 
         except KeyError:
-            pass
-
+            if not just_gpus:
+                out_lines.append(node_printout)
+        for line in out_lines:
+            print(line)
+        
     #print(users)
     max_gpu = 0
     min_gpu = 8
     total_free = 0
+    print(f"\n\n\nUnallocated GPUs:")
     for node in sorted(resource_gpu.keys()):
         for gpu_name in sorted(resource_gpu[node].keys()):
             gpu_arr = resource_gpu[node][gpu_name]
@@ -233,12 +243,12 @@ def main():
             if (n_empty != 0):
                 range_string = ", ".join([str(i) for i in empty_idx[0]])
                 truncated_string = replace_with_ranges(range_string)
-                print(f"{node}:{gpu_name}:IDX({truncated_string})")
+                print(f"{node}:{gpu_name}:{n_empty}(IDX:{truncated_string})")
                 max_gpu = n_empty if n_empty > max_gpu else max_gpu
                 min_gpu = n_empty if n_empty < min_gpu else min_gpu
                 total_free += n_empty
 
-    print(f"Free GPUs = {total_free} ({min_gpu}, {max_gpu})")
+    print(f"Total GPUs available: {total_free}\nPer node: (MIN {min_gpu}, MAX {max_gpu})")
     sys.exit()
 
     all_queues, users, _jobs = qstatf()
