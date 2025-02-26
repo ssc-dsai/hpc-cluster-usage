@@ -66,10 +66,10 @@ def main():
 
     just_gpus = False
     truncate_gpus = True 
-    #squeue = squeuef_local()
-    #sinfo = sinfof_local()
-    squeue = squeuef()
-    sinfo = sinfof()
+    squeue = squeuef_local()
+    sinfo = sinfof_local()
+    #squeue = squeuef()
+    #sinfo = sinfof()
     cluster="gpsc7"
     users = OrderedDict()
     node_data = {}
