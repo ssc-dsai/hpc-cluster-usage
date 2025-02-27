@@ -65,7 +65,8 @@ def main():
     """
 
     just_gpus = False
-    truncate_gpus = True 
+    truncate_gpus = True
+    description = False
     #squeue = squeuef_local()
     #sinfo = sinfof_local()
     squeue = squeuef()
@@ -178,7 +179,9 @@ def main():
                         range_i = [int(j) for j in rangesplit]
                         range_i[-1] += 1
                         gpu_range += list(range(*range_i))
-                if len(gpu_range) == 1:
+                # gpu_range only measures the number of GPUs taken on the current node. It could be '1'
+                # and there may be other GPUs taken up on other nodes, so it would still be considered parallel.
+                if (len(gpu_range) == 1) and (len(job['gres_detail']) == 1):
                     resource_gpu[node_names[gpuid]][gpu_name][gpu_range] += 1
                     resource_gpu_desc[node_names[gpuid]][gpu_name][gpu_range] = f"{usercodes[job['user_name']]}+\033[0m"
                 else:
@@ -205,7 +208,10 @@ def main():
         total_cores = cores_array.shape[0]
         core_usage = ''.join(desc_array)
         out_lines = []
-        node_printout = f"{node:>15}: {core_usage} ({used_cores} of {total_cores} cores)"
+        suffix = ""
+        if description:
+            suffix = f" ({used_cores} of {total_cores} cores)"
+        node_printout = f"{node:>15}: [{core_usage}]{suffix}"
         # just print gpu nodes?
         try:
             gpu_array = resource_gpu[node]
@@ -217,13 +223,15 @@ def main():
                 used_gpus = np.where(gpu_arr > 0)[0].shape[0]
                 total_gpus = gpu_arr.shape[0]
                 gpu_printout = ''.join(gpu_desc_array)
-
+                suffix_gpu = ""
+                if description:
+                    suffix_gpu=f" ({used_gpus} of {total_gpus} GPUs)"
                 if truncate_gpus:
-                    intro = f"{node} ({used_cores} of {total_cores} cores)"
-                    out_lines.append(f"{intro:>35}: {gpu_printout} ({used_gpus} of {total_gpus} GPUs)")
+                    intro = f"{node}{suffix}"
+                    out_lines.append(f"{intro:>35}: [{gpu_printout}]{suffix_gpu}") 
                 else:
                     out_lines.append(node_printout)
-                    out_lines.append(f"{'╵---→  '+gpu_name:>30} {gpu_printout} ({used_gpus} of {total_gpus} GPUs)")
+                    out_lines.append(f"{'╵---→  '+gpu_name:>30} [{gpu_printout}]{suffix_gpu}")
 
         except KeyError:
             if not just_gpus:
