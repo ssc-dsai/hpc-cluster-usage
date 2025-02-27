@@ -12,6 +12,7 @@ import sys
 from os.path import dirname, realpath
 import json
 from collections import OrderedDict
+import argparse
 
 import numpy as np
 
@@ -63,15 +64,18 @@ def main():
 
     :return: Nothing
     """
+    parser = argparse.ArgumentParser(description="Graphical representation of HPC usage.")
+    parser.add_argument('--cluster', default='gpsc7', help='Specify the cluster to display on screen.')
+    parser.add_argument('--verbose', action='store_true', help='Print out more usage details for each node.')
+    parser.add_argument('--just-gpus', action='store_true', help='Print out only the GPU nodes.')
+    parser.add_argument('--truncate-gpus', action='store_true', help='Shorten the CPU usage on GPU clusters.')
+    args = parser.parse_args()
 
-    just_gpus = False
-    truncate_gpus = True
-    description = False
     #squeue = squeuef_local()
     #sinfo = sinfof_local()
     squeue = squeuef()
     sinfo = sinfof()
-    cluster="gpsc7"
+    cluster=args.cluster
     users = OrderedDict()
     node_data = {}
 
@@ -209,7 +213,7 @@ def main():
         core_usage = ''.join(desc_array)
         out_lines = []
         suffix = ""
-        if description:
+        if args.verbose:
             suffix = f" ({used_cores} of {total_cores} cores)"
         node_printout = f"{node:>15}: [{core_usage}]{suffix}"
         # just print gpu nodes?
@@ -224,9 +228,9 @@ def main():
                 total_gpus = gpu_arr.shape[0]
                 gpu_printout = ''.join(gpu_desc_array)
                 suffix_gpu = ""
-                if description:
+                if args.verbose:
                     suffix_gpu=f" ({used_gpus} of {total_gpus} GPUs)"
-                if truncate_gpus:
+                if args.truncate_gpus:
                     intro = f"{node}{suffix}"
                     out_lines.append(f"{intro:>35}: [{gpu_printout}]{suffix_gpu}") 
                 else:
@@ -234,7 +238,7 @@ def main():
                     out_lines.append(f"{'╵---→  '+gpu_name:>30} [{gpu_printout}]{suffix_gpu}")
 
         except KeyError:
-            if not just_gpus:
+            if not args.just_gpus:
                 out_lines.append(node_printout)
         for line in out_lines:
             print(line)
@@ -243,13 +247,17 @@ def main():
     max_gpu = 0
     min_gpu = 8
     total_free = 0
-    print(f"\n\n\nUnallocated GPUs:")
+    free_nodes = 0
     for node in sorted(resource_gpu.keys()):
         for gpu_name in sorted(resource_gpu[node].keys()):
             gpu_arr = resource_gpu[node][gpu_name]
             empty_idx = np.where(gpu_arr == 0)
             n_empty = len(empty_idx[0])
             if (n_empty != 0):
+                # first hit, print out the header.
+                if (free_nodes == 0):
+                    print(f"\n\nUnallocated GPUs:")
+                free_nodes += 1
                 range_string = ", ".join([str(i) for i in empty_idx[0]])
                 truncated_string = replace_with_ranges(range_string)
                 print(f"{node}:{gpu_name}:{n_empty}(IDX:{truncated_string})")
@@ -257,7 +265,9 @@ def main():
                 min_gpu = n_empty if n_empty < min_gpu else min_gpu
                 total_free += n_empty
 
-    print(f"Total GPUs available: {total_free}\nPer node: (MIN {min_gpu}, MAX {max_gpu})")
+    if free_nodes == 0:
+        print("\n")
+    print(f"Total GPUs available: {total_free} across {free_nodes} nodes.\nPer node: (MIN {min_gpu}, MAX {max_gpu})")
     sys.exit()
 
     all_queues, users, _jobs = qstatf()
