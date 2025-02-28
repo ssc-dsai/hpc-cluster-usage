@@ -22,8 +22,8 @@ from dateutil.parser import parse
 
 # Put the parent directory first in the path
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
-from wsge.sqstat import sinfof, squeuef, qstat, qstatf
-from wsge.sqstat import sinfof_local, squeuef_local
+from wslurm.sqstat import sinfof, squeuef
+from wslurm.sqstat import sinfof_local, squeuef_local
 
 # If output goes into head or less without finishing, it will terminate with
 # IOError, this makes pipe errors get ignored.

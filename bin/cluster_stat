@@ -18,8 +18,8 @@ import numpy as np
 
 # Put the parent directory first in the path
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
-from wsge.sqstat import qstatf, squeuef, sinfof
-from wsge.sqstat import squeuef_local, sinfof_local
+from wslurm.sqstat import qstatf, squeuef, sinfof
+from wslurm.sqstat import squeuef_local, sinfof_local
 
 
 def numeric_sort(name):
