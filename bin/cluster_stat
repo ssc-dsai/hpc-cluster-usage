@@ -130,12 +130,14 @@ def main():
         resource_desc.setdefault(node_name, np.zeros(n_cpus, dtype=object)) #info['cpus']['total'], dtype=object))
 
     for job in squeue[cluster]['jobs']:
-        users.setdefault(job['user_name'], 0)
+        user = job['user_name']
+        users.setdefault(user, {})
         #print(json.dumps(job, sort_keys=True, indent=4, separators=(',', ': ')))
         ntasks = job['tasks']['number']
-        users[job['user_name']] += ntasks
-        # present as a list but I only see one entry..
+        job_id = job['job_id']
         state = job['job_state'][0]
+        #users[user][job_id] = {'ntasks': ntasks, 'state': state}
+        # present as a list but I only see one entry..
         if state == "RUNNING":
         
             resources = job['job_resources']['nodes']
