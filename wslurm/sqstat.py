@@ -14,11 +14,6 @@ import json
 import os
 
 
-try:
-    from lxml.etree import fromstring
-except ImportError:
-    from xml.etree.ElementTree import fromstring
-
 
 def qstat():
     """Return qstat output (job list) as a dictionary."""

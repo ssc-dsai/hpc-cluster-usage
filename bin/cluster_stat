@@ -65,10 +65,10 @@ def main():
     :return: Nothing
     """
     parser = argparse.ArgumentParser(description="Graphical representation of HPC usage.")
-    parser.add_argument('--cluster', default='gpsc7', help='Specify the cluster to display on screen.')
-    parser.add_argument('--verbose', action='store_true', help='Print out more usage details for each node.')
-    parser.add_argument('--just-gpus', action='store_true', help='Print out only the GPU nodes.')
-    parser.add_argument('--truncate-gpus', action='store_true', help='Shorten the CPU usage on GPU clusters.')
+    parser.add_argument('--cluster', '-M', default='gpsc7', help='Specify the cluster to display on screen.')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Print out more usage details for each node.')
+    parser.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
+    parser.add_argument('--truncate-gpus', '-t', action='store_true', help='Shorten the CPU usage on GPU clusters.')
     args = parser.parse_args()
 
     #squeue = squeuef_local()
@@ -240,7 +240,7 @@ def main():
                     out_lines.append(f"{'╵---→  '+gpu_name:>30} [{gpu_printout}]{suffix_gpu}")
 
         except KeyError:
-            if not args.just_gpus:
+            if not args.gpus_only:
                 out_lines.append(node_printout)
         for line in out_lines:
             print(line)
