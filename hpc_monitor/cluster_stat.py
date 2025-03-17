@@ -5,17 +5,15 @@ from .sqstat import sinfof, squeuef, sinfof_local, squeuef_local
 
 class ClusterStat:
     def __init__(self, *args, **kwargs):
-        self.args = args
+        self.__dict__.update(kwargs) # just put em all as attributes why not?
         self.users = OrderedDict()
         self.usercodes = OrderedDict() # colors for users
-        self.clusters = args.clusters
 
     @property
     def squeue(self):
-        if hasattr(self, _squeue):
-            return self._squeue
-        else:
+        if not hasattr(self, "_squeue"):
             self._squeue = squeuef(self.clusters)
+        return self._squeue
 
     def initialize_usercodes(self):
         """Initialize user codes for coloring output."""
@@ -28,14 +26,39 @@ class ClusterStat:
 
     def process_jobs(self):
         """Process jobs from squeue output."""
+        for cluster in self.squeue.keys():
+            for job in self.squeue[cluster]['jobs']:
+                user = job['user_name']
+                self.users.update({user: 0})
+                if job['job_state'][0] == "RUNNING":
+                    self.process_running_job(job)
+                else:
+                    pass
+
+    def process_gpu_usage(self):
         pass
+    
+    def process_cpu_usage(self):
+        pass
+
+    def process_running_job(self, job):
+        user = job['user_name']
+        resources = job['job_resources']['nodes']
+        node_names = [r_node['name'] for r_node in resources['allocation']]
+
+        for r_node in resources['allocation']:
+            self.process_cpu_usage()
+
+        for gpuid, gpus_string in enumerate(job['gres_detail']):
+            self.process_gpu_usage()
 
     def __call__(self):
         """Calling the cluster stat instance because I couldn't think of a good name for the function other 
         than `cluster_stat` which is redundant."""
 
-        self.initialize_usercodes()
         self.process_jobs()
+        self.initialize_usercodes()
+        print(self.usercodes)
 
 
 

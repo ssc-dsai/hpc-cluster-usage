@@ -8,6 +8,7 @@ Pretty summary of what's going on in the queue.
 
 import getpass
 import re
+import os
 import sys
 from os.path import dirname, realpath
 import json
@@ -427,7 +428,8 @@ def main():
 
 if __name__ == '__main__':
     #main()
+    print(f"Terminal size: {os.get_terminal_size()}")
     args = parse_args()
-    cs = ClusterStat(args)
+    args_dict = vars(args)
+    cs = ClusterStat(**args_dict)
     cs()
-
