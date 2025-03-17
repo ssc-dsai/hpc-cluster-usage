@@ -9,15 +9,17 @@ Reads SGE output as XML and parses into python dictionaries.
 """
 
 from collections import OrderedDict
-from collections.abc import Iterable
 from subprocess import Popen, PIPE
 import json
 import os
 
 
-def sinfof(cluster):
-    #   sinfo -M all -a --Node --json
-    sinfo_args = ['sinfo', '-M', 'all', '--Node', '--json']
+def sinfof(clusters):
+    if not isinstance(clusters, str):
+        c = ",".join(clusters)
+    else:
+        c = clusters
+    sinfo_args = ['sinfo', '-M', c, '--Node', '--json']
     sinfo_str = Popen(sinfo_args, stdout=PIPE).stdout.read()
     added_braces = []
     for id, line in enumerate(sinfo_str.decode('utf-8').split("\n")):
@@ -39,13 +41,13 @@ def sinfof(cluster):
     sinfo_obj = json.loads("\n".join(added_braces))
     return sinfo_obj
 
-def squeuef(cluster):
+def squeuef(clusters):
     """Return squeue output as a dictionary"""
 
-    if isinstance(cluster, Iterable):
-        c = ",".join(cluster)
+    if not isinstance(clusters, str):
+        c = ",".join(clusters)
     else:
-        c = cluster
+        c = clusters
     squeue_args = ['squeue', '-M', c, '--json']
     squeue_str = Popen(squeue_args, stdout=PIPE).stdout.read()
     # have to insert curly braces at the outer level (CLUSTER)
@@ -75,7 +77,7 @@ def squeuef(cluster):
     #   --- JB_owner
     return squeue_obj
 
-def sinfof_local(cluster):
+def sinfof_local(clusters):
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sinfo_out.json")
     with open(filename, 'r') as f:
         lines = f.readlines()
@@ -84,7 +86,7 @@ def sinfof_local(cluster):
         nline = line.strip()
         if nline.startswith('CLUSTER'):
             cid = "\""+nline.split(":")[-1].strip()+"\""
-            if cid not in cluster:
+            if cid not in clusters:
                 continue
             if id != 0:
                 #added_braces.append("},".rjust(5))
@@ -101,7 +103,7 @@ def sinfof_local(cluster):
     sinfo_obj = json.loads("\n".join(added_braces))
     return sinfo_obj
 
-def squeuef_local(cluster):
+def squeuef_local(clusters):
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "squeue_out.json")
     with open(filename, 'r') as f:
         lines = f.readlines()
@@ -110,7 +112,7 @@ def squeuef_local(cluster):
         nline = line.strip()
         if nline.startswith('CLUSTER'):
             cid = "\""+nline.split(":")[-1].strip()+"\""
-            if cid not in cluster:
+            if cid not in clusters:
                 continue
             if id != 0:
                 #added_braces.append("},".rjust(5))

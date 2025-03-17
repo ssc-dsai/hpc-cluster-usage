@@ -4,18 +4,18 @@ import subprocess
 from .sqstat import sinfof, squeuef, sinfof_local, squeuef_local
 
 class ClusterStat:
-    def __init__(self, cluster="all", verbose=False, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         self.args = args
         self.users = OrderedDict()
         self.usercodes = OrderedDict() # colors for users
-        self.cluster = cluster
+        self.clusters = args.clusters
 
     @property
     def squeue(self):
         if hasattr(self, _squeue):
             return self._squeue
         else:
-            self._squeue = squeuef(self.cluster)
+            self._squeue = squeuef(self.clusters)
 
     def initialize_usercodes(self):
         """Initialize user codes for coloring output."""

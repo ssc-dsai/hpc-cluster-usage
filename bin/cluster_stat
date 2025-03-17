@@ -18,9 +18,9 @@ import numpy as np
 
 # Put the parent directory first in the path
 sys.path.insert(1, dirname(dirname(realpath(__file__))))
-from wslurm.sqstat import qstatf, squeuef, sinfof
-from wslurm.sqstat import squeuef_local, sinfof_local
-
+from hpc_monitor.sqstat import squeuef, sinfof
+from hpc_monitor.sqstat import squeuef_local, sinfof_local
+from hpc_monitor.cluster_stat import ClusterStat
 
 def numeric_sort(name):
     """
@@ -56,6 +56,13 @@ def replace_with_ranges(input_str):
 
     return ','.join(ranges)
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Graphical representation of HPC usage.")
+    parser.add_argument('--clusters', '-M', default='all', help='Specify the cluster to display on screen.')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Print out more usage details for each node.')
+    parser.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
+    parser.add_argument('--truncate-gpus', '-t', action='store_true', help='Shorten the CPU usage on GPU clusters.')
+    return parser.parse_args()
 
 def main():
     """
@@ -64,28 +71,24 @@ def main():
 
     :return: Nothing
     """
-    parser = argparse.ArgumentParser(description="Graphical representation of HPC usage.")
-    parser.add_argument('--cluster', '-M', default='gpsc7', help='Specify the cluster to display on screen.')
-    parser.add_argument('--verbose', '-v', action='store_true', help='Print out more usage details for each node.')
-    parser.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
-    parser.add_argument('--truncate-gpus', '-t', action='store_true', help='Shorten the CPU usage on GPU clusters.')
-    args = parser.parse_args()
 
+    args = parse_args()
     #squeue = squeuef_local()
     #sinfo = sinfof_local()
-    squeue = squeuef()
-    sinfo = sinfof()
-    cluster=args.cluster
+    squeue = squeuef(args.clusters)
+    sinfo = sinfof(args.clusters)
+    clusters = list(squeue.keys())
     users = OrderedDict()
     node_data = {}
-
-    for job in squeue[cluster]['jobs']:
-        users.setdefault(job['user_name'], 0)
     usercodes = {}
-    for user_id, user in enumerate(users, start=1):
-        # can't get black!
-        user_id = user_id%15 
-        usercodes[user] = "\033[38;5;%im" % user_id
+
+    for cluster in clusters:
+        for job in squeue[cluster]['jobs']:
+            users.setdefault(job['user_name'], 0)
+        for user_id, user in enumerate(users, start=1):
+            # can't get black!
+            user_id = user_id%15 
+            usercodes[user] = "\033[38;5;%im" % user_id
 
     # Make current user always look the same
     usercodes[getpass.getuser()] = "\033[104;39;1m"
@@ -94,185 +97,186 @@ def main():
     resource_desc = {}
     resource_gpu = {}
     resource_gpu_desc = {}
-    for info in sinfo[cluster]['sinfo']:
-        node_name = info['nodes']['nodes'][0]
-        # cores_per_socket * n_sockets might be a more accurate way to determine CPU count.
-        cores_per_socket = info['cores']['maximum']
-        n_sockets = info['sockets']['maximum']
-        n_cpus = int(cores_per_socket) * int(n_sockets)
-        gpus_string = info['gres']['total']
-        gpu_name = None
-        gpu_count = 0
-        if (gpus_string):
-            #print(json.dumps(info, sort_keys=True, indent=4, separators=(',', ': ')))
-            gpus_list = re.split(r'[:()\s]+', gpus_string)
+    for cluster in clusters:
+        for info in sinfo[cluster]['sinfo']:
+            node_name = info['nodes']['nodes'][0]
+            # cores_per_socket * n_sockets might be a more accurate way to determine CPU count.
+            cores_per_socket = info['cores']['maximum']
+            n_sockets = info['sockets']['maximum']
+            n_cpus = int(cores_per_socket) * int(n_sockets)
+            gpus_string = info['gres']['total']
+            gpu_name = None
+            gpu_count = 0
+            if (gpus_string):
+                #print(json.dumps(info, sort_keys=True, indent=4, separators=(',', ': ')))
+                gpus_list = re.split(r'[:()\s]+', gpus_string)
+                
+                sockets = re.search(r'\((.*?)\)',gpus_string).group(1)
+
+                gpu_name = gpus_list[1]
+                gpu_count = int(gpus_list[2])
+                resource_gpu.setdefault(node_name, {})
+                resource_gpu_desc.setdefault(node_name, {})
+                resource_gpu[node_name].setdefault(gpu_name, np.zeros(gpu_count, dtype=object))
+                resource_gpu_desc[node_name].setdefault(gpu_name, np.zeros(gpu_count, dtype=object))
+
+
+            node_data[node_name] = {'memory': info['memory']['maximum'],
+                                    'memory_used': info['memory']['allocated'],
+                                    'cpu_count': n_cpus, #info['cpus']['total'],
+                                    'cpu_used': info['cpus']['allocated'],
+                                    'cpu_idle': info['cpus']['idle'],
+                                    'core_count': info['cores']['maximum'],
+                                    'gpu_name': gpu_name,
+                                    'gpu_count': gpu_count,
+            }
+            resource_list.setdefault(node_name, np.zeros(n_cpus, dtype=object)) #info['cpus']['total'], dtype=object))
+            resource_desc.setdefault(node_name, np.zeros(n_cpus, dtype=object)) #info['cpus']['total'], dtype=object))
+
+        for job in squeue[cluster]['jobs']:
+            user = job['user_name']
+            users.setdefault(user, {})
+            #print(json.dumps(job, sort_keys=True, indent=4, separators=(',', ': ')))
+            ntasks = job['tasks']['number']
+            job_id = job['job_id']
+            state = job['job_state'][0]
+            #users[user][job_id] = {'ntasks': ntasks, 'state': state}
+            # present as a list but I only see one entry..
+            if state == "RUNNING":
             
-            sockets = re.search(r'\((.*?)\)',gpus_string).group(1)
+                resources = job['job_resources']['nodes']
+                names = resources['list']
+                # GPU details are not explicit.
+                #print(json.dumps(resources, sort_keys=True, indent=4, separators=(',', ': ')))
+                # iterate through cpu resources
+                node_names = []
+                for r_node in resources['allocation']:
+                    r_node_name = r_node['name']
+                    node_names.append(r_node_name)
+                    # for some reason the gpus on gpsc7 have 256 cpus but 64 cores. Not sure what's going on there.
+                    cpu_max = node_data[r_node_name]['cpu_count']
 
-            gpu_name = gpus_list[1]
-            gpu_count = int(gpus_list[2])
-            resource_gpu.setdefault(node_name, {})
-            resource_gpu_desc.setdefault(node_name, {})
-            resource_gpu[node_name].setdefault(gpu_name, np.zeros(gpu_count, dtype=object))
-            resource_gpu_desc[node_name].setdefault(gpu_name, np.zeros(gpu_count, dtype=object))
-
-
-        node_data[node_name] = {'memory': info['memory']['maximum'],
-                                'memory_used': info['memory']['allocated'],
-                                'cpu_count': n_cpus, #info['cpus']['total'],
-                                'cpu_used': info['cpus']['allocated'],
-                                'cpu_idle': info['cpus']['idle'],
-                                'core_count': info['cores']['maximum'],
-                                'gpu_name': gpu_name,
-                                'gpu_count': gpu_count,
-        }
-        resource_list.setdefault(node_name, np.zeros(n_cpus, dtype=object)) #info['cpus']['total'], dtype=object))
-        resource_desc.setdefault(node_name, np.zeros(n_cpus, dtype=object)) #info['cpus']['total'], dtype=object))
-
-    for job in squeue[cluster]['jobs']:
-        user = job['user_name']
-        users.setdefault(user, {})
-        #print(json.dumps(job, sort_keys=True, indent=4, separators=(',', ': ')))
-        ntasks = job['tasks']['number']
-        job_id = job['job_id']
-        state = job['job_state'][0]
-        #users[user][job_id] = {'ntasks': ntasks, 'state': state}
-        # present as a list but I only see one entry..
-        if state == "RUNNING":
-        
-            resources = job['job_resources']['nodes']
-            names = resources['list']
-            # GPU details are not explicit.
-            #print(json.dumps(resources, sort_keys=True, indent=4, separators=(',', ': ')))
-            # iterate through cpu resources
-            node_names = []
-            for r_node in resources['allocation']:
-                r_node_name = r_node['name']
-                node_names.append(r_node_name)
-                # for some reason the gpus on gpsc7 have 256 cpus but 64 cores. Not sure what's going on there.
-                cpu_max = node_data[r_node_name]['cpu_count']
-
-                cores_array = resource_list[r_node_name]
-                desc_array = resource_desc[r_node_name]
-                offset = 0
-                cpu_usage = 0
-                usage_idx = []
-                for socket in r_node['sockets']:
-                    for core in socket['cores']:
-                        idx = core['index']
-                        if core['status'][0] == "ALLOCATED":
-                            cores_array[offset] += 1
-                            cpu_usage += 1
-                            usage_idx.append(offset)
-                        offset += 1
-                if cpu_usage > 1:
-                    desc_array[usage_idx] = f"{usercodes[job['user_name']]}=\033[0m"
-                else:
-                    desc_array[usage_idx] = f"{usercodes[job['user_name']]}+\033[0m"
-
-            for gpuid, gpus_string in enumerate(job['gres_detail']):
-                #print(json.dumps(job, sort_keys=True, indent=4, separators=(',', ': ')))
-                name_qty = re.sub(r'\([^)]*\)', '', gpus_string)
-                gpu_name = name_qty.split(":")[1]
-                n_gpus = int(name_qty.split(":")[-1])
-                gpu_idx = re.search(r'\((.*?)\)',gpus_string).group(1).split(":")[-1]
-                gpu_range = []
-                for i in gpu_idx.split(','):
-                    rangesplit = i.split("-")
-                    if len(rangesplit) == 1:
-                        gpu_range.append(int(rangesplit[0]))
+                    cores_array = resource_list[r_node_name]
+                    desc_array = resource_desc[r_node_name]
+                    offset = 0
+                    cpu_usage = 0
+                    usage_idx = []
+                    for socket in r_node['sockets']:
+                        for core in socket['cores']:
+                            idx = core['index']
+                            if core['status'][0] == "ALLOCATED":
+                                cores_array[offset] += 1
+                                cpu_usage += 1
+                                usage_idx.append(offset)
+                            offset += 1
+                    if cpu_usage > 1:
+                        desc_array[usage_idx] = f"{usercodes[job['user_name']]}=\033[0m"
                     else:
-                        range_i = [int(j) for j in rangesplit]
-                        range_i[-1] += 1
-                        gpu_range += list(range(*range_i))
-                # gpu_range only measures the number of GPUs taken on the current node. It could be '1'
-                # and there may be other GPUs taken up on other nodes, so it would still be considered parallel.
-                if (len(gpu_range) == 1) and (len(job['gres_detail']) == 1):
-                    resource_gpu[node_names[gpuid]][gpu_name][gpu_range] += 1
-                    resource_gpu_desc[node_names[gpuid]][gpu_name][gpu_range] = f"{usercodes[job['user_name']]}+\033[0m"
-                else:
-                    resource_gpu[node_names[gpuid]][gpu_name][gpu_range] += 1 
-                    resource_gpu_desc[node_names[gpuid]][gpu_name][gpu_range] = f"{usercodes[job['user_name']]}=\033[0m"
+                        desc_array[usage_idx] = f"{usercodes[job['user_name']]}+\033[0m"
 
-                #print(gpus_string, gpu_range, len(gpu_range) == n_gpus) 
-            #print(f"tres per node: {job['tres_per_node']}")
-            #for i in resources['allocation']:
-                #print(i['index'], i['name'],  i['cpus']['count'], i['cpus']['used'])
-            #    for socket in i['sockets']:
-            #        print(f"socket: {socket['index']}")
-            #        for core in socket['cores']:
-            #            print(f"core: {core['index']} status: {core['status'][0]}")
+                for gpuid, gpus_string in enumerate(job['gres_detail']):
+                    #print(json.dumps(job, sort_keys=True, indent=4, separators=(',', ': ')))
+                    name_qty = re.sub(r'\([^)]*\)', '', gpus_string)
+                    gpu_name = name_qty.split(":")[1]
+                    n_gpus = int(name_qty.split(":")[-1])
+                    gpu_idx = re.search(r'\((.*?)\)',gpus_string).group(1).split(":")[-1]
+                    gpu_range = []
+                    for i in gpu_idx.split(','):
+                        rangesplit = i.split("-")
+                        if len(rangesplit) == 1:
+                            gpu_range.append(int(rangesplit[0]))
+                        else:
+                            range_i = [int(j) for j in rangesplit]
+                            range_i[-1] += 1
+                            gpu_range += list(range(*range_i))
+                    # gpu_range only measures the number of GPUs taken on the current node. It could be '1'
+                    # and there may be other GPUs taken up on other nodes, so it would still be considered parallel.
+                    if (len(gpu_range) == 1) and (len(job['gres_detail']) == 1):
+                        resource_gpu[node_names[gpuid]][gpu_name][gpu_range] += 1
+                        resource_gpu_desc[node_names[gpuid]][gpu_name][gpu_range] = f"{usercodes[job['user_name']]}+\033[0m"
+                    else:
+                        resource_gpu[node_names[gpuid]][gpu_name][gpu_range] += 1 
+                        resource_gpu_desc[node_names[gpuid]][gpu_name][gpu_range] = f"{usercodes[job['user_name']]}=\033[0m"
+
+                    #print(gpus_string, gpu_range, len(gpu_range) == n_gpus) 
+                #print(f"tres per node: {job['tres_per_node']}")
+                #for i in resources['allocation']:
+                    #print(i['index'], i['name'],  i['cpus']['count'], i['cpus']['used'])
+                #    for socket in i['sockets']:
+                #        print(f"socket: {socket['index']}")
+                #        for core in socket['cores']:
+                #            print(f"core: {core['index']} status: {core['status'][0]}")
 
 
-            #sys.exit()
-    for node in sorted(resource_desc.keys()):
-        cores_array = resource_list[node]
-        empty_idx = np.where(cores_array == 0)
-        desc_array = resource_desc[node]
-        desc_array[empty_idx] = "\033[0m\033[42m \033[0m"
-        used_cores = np.where(cores_array > 0)[0].shape[0]
-        total_cores = cores_array.shape[0]
-        core_usage = ''.join(desc_array)
-        out_lines = []
-        suffix = ""
-        if args.verbose:
-            suffix = f" ({used_cores} of {total_cores} cores)"
-        node_printout = f"{node:>15}: [{core_usage}]{suffix}"
-        # just print gpu nodes?
-        try:
-            gpu_array = resource_gpu[node]
-            for gpu_name in sorted(gpu_array.keys()):
-                gpu_arr = gpu_array[gpu_name]
-                gpu_desc_array = resource_gpu_desc[node][gpu_name]
-                empty_idx = np.where(gpu_arr == 0)
-                gpu_desc_array[empty_idx] = "\033[0m\033[42m \033[0m"
-                used_gpus = np.where(gpu_arr > 0)[0].shape[0]
-                total_gpus = gpu_arr.shape[0]
-                gpu_printout = ''.join(gpu_desc_array)
-                suffix_gpu = ""
-                if args.verbose:
-                    suffix_gpu=f" ({used_gpus} of {total_gpus} GPUs)"
-                if args.truncate_gpus:
-                    intro = f"{node}{suffix}"
-                    out_lines.append(f"{intro:>35}: [{gpu_printout}]{suffix_gpu}") 
-                else:
+                #sys.exit()
+        for node in sorted(resource_desc.keys()):
+            cores_array = resource_list[node]
+            empty_idx = np.where(cores_array == 0)
+            desc_array = resource_desc[node]
+            desc_array[empty_idx] = "\033[0m\033[42m \033[0m"
+            used_cores = np.where(cores_array > 0)[0].shape[0]
+            total_cores = cores_array.shape[0]
+            core_usage = ''.join(desc_array)
+            out_lines = []
+            suffix = ""
+            if args.verbose:
+                suffix = f" ({used_cores} of {total_cores} cores)"
+            node_printout = f"{node:>15}: [{core_usage}]{suffix}"
+            # just print gpu nodes?
+            try:
+                gpu_array = resource_gpu[node]
+                for gpu_name in sorted(gpu_array.keys()):
+                    gpu_arr = gpu_array[gpu_name]
+                    gpu_desc_array = resource_gpu_desc[node][gpu_name]
+                    empty_idx = np.where(gpu_arr == 0)
+                    gpu_desc_array[empty_idx] = "\033[0m\033[42m \033[0m"
+                    used_gpus = np.where(gpu_arr > 0)[0].shape[0]
+                    total_gpus = gpu_arr.shape[0]
+                    gpu_printout = ''.join(gpu_desc_array)
+                    suffix_gpu = ""
+                    if args.verbose:
+                        suffix_gpu=f" ({used_gpus} of {total_gpus} GPUs)"
+                    if args.truncate_gpus:
+                        intro = f"{node}{suffix}"
+                        out_lines.append(f"{intro:>35}: [{gpu_printout}]{suffix_gpu}") 
+                    else:
+                        out_lines.append(node_printout)
+                        out_lines.append(f"{'╵---→  '+gpu_name:>30} [{gpu_printout}]{suffix_gpu}")
+
+            except KeyError:
+                if not args.gpus_only:
                     out_lines.append(node_printout)
-                    out_lines.append(f"{'╵---→  '+gpu_name:>30} [{gpu_printout}]{suffix_gpu}")
+            for line in out_lines:
+                print(line)
+            
+        #print(users)
+        max_gpu = 0
+        min_gpu = 8
+        total_free = 0
+        free_nodes = 0
+        for node in sorted(resource_gpu.keys()):
+            for gpu_name in sorted(resource_gpu[node].keys()):
+                gpu_arr = resource_gpu[node][gpu_name]
+                empty_idx = np.where(gpu_arr == 0)
+                n_empty = len(empty_idx[0])
+                if (n_empty != 0):
+                    # first hit, print out the header.
+                    if (free_nodes == 0):
+                        print(f"\n\nUnallocated GPUs:")
+                    free_nodes += 1
+                    range_string = ", ".join([str(i) for i in empty_idx[0]])
+                    truncated_string = replace_with_ranges(range_string)
+                    print(f"{node}:{gpu_name}:{n_empty}(IDX:{truncated_string})")
+                    max_gpu = n_empty if n_empty > max_gpu else max_gpu
+                    min_gpu = n_empty if n_empty < min_gpu else min_gpu
+                    total_free += n_empty
 
-        except KeyError:
-            if not args.gpus_only:
-                out_lines.append(node_printout)
-        for line in out_lines:
-            print(line)
-        
-    #print(users)
-    max_gpu = 0
-    min_gpu = 8
-    total_free = 0
-    free_nodes = 0
-    for node in sorted(resource_gpu.keys()):
-        for gpu_name in sorted(resource_gpu[node].keys()):
-            gpu_arr = resource_gpu[node][gpu_name]
-            empty_idx = np.where(gpu_arr == 0)
-            n_empty = len(empty_idx[0])
-            if (n_empty != 0):
-                # first hit, print out the header.
-                if (free_nodes == 0):
-                    print(f"\n\nUnallocated GPUs:")
-                free_nodes += 1
-                range_string = ", ".join([str(i) for i in empty_idx[0]])
-                truncated_string = replace_with_ranges(range_string)
-                print(f"{node}:{gpu_name}:{n_empty}(IDX:{truncated_string})")
-                max_gpu = n_empty if n_empty > max_gpu else max_gpu
-                min_gpu = n_empty if n_empty < min_gpu else min_gpu
-                total_free += n_empty
-
-    if free_nodes == 0:
-        print("\n")
-    print(f"Total GPUs available: {total_free} across {free_nodes} nodes.\nPer node: (MIN {min_gpu}, MAX {max_gpu})")
+        if free_nodes == 0:
+            print("\n")
+        print(f"Total GPUs available: {total_free} across {free_nodes} nodes.\nPer node: (MIN {min_gpu}, MAX {max_gpu})")
     sys.exit()
 
-    all_queues, users, _jobs = qstatf()
+    all_queues, users, _jobs = None, None, None #qstatf()
     # Setup how people's jobs look:
     usercodes = {}
     for user_id, user in enumerate(users, start=1):
@@ -422,4 +426,8 @@ def main():
     sys.stdout.flush()
 
 if __name__ == '__main__':
-    main()
+    #main()
+    args = parse_args()
+    cs = ClusterStat(args)
+    cs()
+
