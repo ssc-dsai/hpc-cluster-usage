@@ -54,7 +54,7 @@ class ClusterStat:
             #self._sinfo = sinfof_local(self.clusters)
         return self._sinfo
 
-    def initialize_usercodes(self):
+    def initialize_users(self):
         """Initialize user codes for coloring output."""
         # have to loop the jobs to catch all the active users.
         for cluster in self.squeue.keys():
@@ -205,9 +205,9 @@ class ClusterStat:
         """Calling the cluster stat instance because I couldn't think of a good name for the function other 
         than `cluster_stat` which is redundant."""
 
-        self.initialize_usercodes() # must be called first 
+        self.initialize_users() # must be called first 
         self.process_info() # must be called second
         self.process_jobs() # third..
-        self.print_unallocated_gpus("gpsc7")
+        #self.print_unallocated_gpus("gpsc7")
 
 
