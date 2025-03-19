@@ -436,5 +436,5 @@ if __name__ == '__main__':
     screen = Display(**args_dict)
     screen.cluster_stat = cs
     screen.initialize_usercodes()
-    screen.format_output()
+    print(screen)
 
