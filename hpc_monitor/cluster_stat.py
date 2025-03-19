@@ -73,6 +73,9 @@ class ClusterStat:
         """Process jobs from squeue output."""
         for cluster in self.squeue.keys():
             for job in self.squeue[cluster]['jobs']:
+                self.users.setdefault(cluster, OrderedDict())
+                user = job['user_name']
+                self.users[cluster][user]
                 if job['job_state'][0] == "RUNNING":
                     self.process_running_job(job)
                 else:
@@ -96,12 +99,12 @@ class ClusterStat:
 
         if (len(gpu_range) == 1) and (n_nodes <= 1):
             self.resource_gpu[cluster][node_name][gpu_name][gpu_range] += 1
-            self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"{self.usercodes[user]}+\033[0m"
+            self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"S:{user}" #f"{self.usercodes[user]}+\033[0m"
         else: 
             self.resource_gpu[cluster][node_name][gpu_name][gpu_range] += 1
-            self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"{self.usercodes[user]}=\033[0m"
+            self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"P:{user}" #f"{self.usercodes[user]}=\033[0m"
     
-    def process_cpu_usage(self, r_node, cluster, user):
+    def process_cpu_usage(self, r_node, n_nodes, cluster, user):
         r_node_name = r_node['name']
         cores_array = self.resource_list[cluster][r_node_name]
         desc_array = self.resource_desc[cluster][r_node_name]
@@ -116,10 +119,11 @@ class ClusterStat:
                     cpu_usage += 1
                     usage_idx.append(offset)
                 offset += 1
-        if cpu_usage > 1:
-            desc_array[usage_idx] = f"{self.usercodes[user]}=\033[0m"
+        if (cpu_usage <= 1) and (n_nodes <= 1):
+            # need user data as well!
+            desc_array[usage_idx] = f"S:{user}" #f"{self.usercodes[user]}+\033[0m"
         else:
-            desc_array[usage_idx] = f"{self.usercodes[user]}+\033[0m"
+            desc_array[usage_idx] = f"P{user}" #f"{self.usercodes[user]}=\033[0m"
 
     def process_info(self):
         for cluster, sinfo_list in self.sinfo.items():
@@ -165,9 +169,8 @@ class ClusterStat:
         cluster = job['cluster']
         resources = job['job_resources']['nodes']
         node_names = [r_node['name'] for r_node in resources['allocation']]
-
         for r_node in resources['allocation']:
-            self.process_cpu_usage(r_node, cluster, user)
+            self.process_cpu_usage(r_node, len(resources['allocation']), cluster, user)
 
         for gpuid, gpus_string in enumerate(job['gres_detail']):
             self.process_gpu_usage(node_names[gpuid], gpus_string, len(job['gres_detail']), cluster, user)
@@ -205,7 +208,7 @@ class ClusterStat:
         """Calling the cluster stat instance because I couldn't think of a good name for the function other 
         than `cluster_stat` which is redundant."""
 
-        self.initialize_users() # must be called first 
+        #self.initialize_users() # must be called first 
         self.process_info() # must be called second
         self.process_jobs() # third..
         #self.print_unallocated_gpus("gpsc7")
