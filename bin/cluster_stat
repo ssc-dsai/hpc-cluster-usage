@@ -429,11 +429,12 @@ def main():
 
 if __name__ == '__main__':
     #main()
-    print(f"Terminal size: {os.get_terminal_size()}")
     args = parse_args()
     args_dict = vars(args)
     cs = ClusterStat(**args_dict)
     cs()
-    screen = Display()
-    print(screen)
+    screen = Display(**args_dict)
+    screen.cluster_stat = cs
+    screen.initialize_usercodes()
+    screen.format_output()
 

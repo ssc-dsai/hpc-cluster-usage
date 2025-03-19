@@ -3,6 +3,8 @@ import sys
 from collections import OrderedDict
 import numpy as np
 
+import json
+
 import getpass
 import subprocess
 from .sqstat import sinfof, squeuef, sinfof_local, squeuef_local
@@ -33,7 +35,6 @@ class ClusterStat:
     def __init__(self, *args, **kwargs):
         self.__dict__.update(kwargs) # just put em all as attributes why not?
         self.users = OrderedDict()
-        self.usercodes = OrderedDict() # colors for users
         self.resource_gpu = OrderedDict()
         self.resource_gpu_desc = OrderedDict()
         self.resource_list = OrderedDict()
@@ -54,32 +55,59 @@ class ClusterStat:
             #self._sinfo = sinfof_local(self.clusters)
         return self._sinfo
 
-    def initialize_users(self):
-        """Initialize user codes for coloring output."""
-        # have to loop the jobs to catch all the active users.
-        for cluster in self.squeue.keys():
-            for job in self.squeue[cluster]['jobs']:
-                user = job['user_name']
-                self.users.update({user: 0})
+    def parse_alloc_string(self, string):
+        cpus = re.search(r'cpu=(\d+)', string, re.IGNORECASE)
+        mem = re.search(r'(?<=mem=)[^,]*', string, re.IGNORECASE).group(0)
+        nodes = re.search(r'node=(\d+)', string, re.IGNORECASE)
+        gpus = re.search(r'gres/gpu=(\d+)', string, re.IGNORECASE)
+        cpus = int(cpus.group(1)) if cpus else 0
+        #mem = int(mem.group(1)) if mem else 0
+        nodes = int(nodes.group(1)) if nodes else 0
+        gpus = int(gpus.group(1)) if gpus else 0
+        n_mem = 0
+        # convert to megabytes
+        if mem.endswith("T"):
+            n_mem = int(float(mem[:-1])) * 1024 * 1024 
+        elif mem.endswith("G"):
+            n_mem = int(float(mem[:-1])) * 1024
+        elif mem.endswith("M"):
+            n_mem = int(float(mem[:-1]))
+        return {"cpus": cpus, "gpus": gpus, "mem": n_mem, "nodes": nodes}
 
-        for user_id, user in enumerate(self.users, start=1):
-            # Cycle through 15 colours (avoid black)
-            user_id = user_id%15
-            self.usercodes[user] = f"\033[38;5{user_id}m"
-        # keep the active user the same color always
-        self.usercodes[getpass.getuser()] = "\033[104;39;1m"
 
     def process_jobs(self):
-        """Process jobs from squeue output."""
+        """Process jobs from squeue output.
+        
+        Possible job states are:
+                    (BOOT_FAIL, 
+                     CANCELLED, 
+                     COMPLETED, 
+                     DEADLINE, 
+                     FAILED,
+                     NODE_FAIL, 
+                     OUT_OF_MEMORY, 
+                     PENDING, 
+                     PREEMPTED, 
+                     RUNNING
+                     SUSPENDED, 
+                     TIMEOUT,
+        )
+        """
         for cluster in self.squeue.keys():
             for job in self.squeue[cluster]['jobs']:
                 self.users.setdefault(cluster, OrderedDict())
                 user = job['user_name']
-                self.users[cluster][user]
+                self.users[cluster].setdefault(user, OrderedDict())
+                alloc = self.parse_alloc_string(job['tres_req_str'])
                 if job['job_state'][0] == "RUNNING":
+                    self.users[cluster][user].setdefault("RUNNING", [])
+                    self.users[cluster][user]["RUNNING"].append(alloc)
                     self.process_running_job(job)
+                elif job['job_state'][0] == "PENDING":
+                    self.users[cluster][user].setdefault("PENDING", [])
+                    self.users[cluster][user]["PENDING"].append(alloc)
                 else:
-                    pass
+                    print(f"{job['job_state'][0]} not considered yet!")
 
     def process_gpu_usage(self, node_name, gpus_string, n_nodes, cluster, user):
         name_qty = re.sub(r'\([^)]*\)', '', gpus_string)
@@ -99,10 +127,10 @@ class ClusterStat:
 
         if (len(gpu_range) == 1) and (n_nodes <= 1):
             self.resource_gpu[cluster][node_name][gpu_name][gpu_range] += 1
-            self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"S:{user}" #f"{self.usercodes[user]}+\033[0m"
+            self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"S{user}" #f"{self.usercodes[user]}+\033[0m"
         else: 
             self.resource_gpu[cluster][node_name][gpu_name][gpu_range] += 1
-            self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"P:{user}" #f"{self.usercodes[user]}=\033[0m"
+            self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"P{user}" #f"{self.usercodes[user]}=\033[0m"
     
     def process_cpu_usage(self, r_node, n_nodes, cluster, user):
         r_node_name = r_node['name']
@@ -121,7 +149,7 @@ class ClusterStat:
                 offset += 1
         if (cpu_usage <= 1) and (n_nodes <= 1):
             # need user data as well!
-            desc_array[usage_idx] = f"S:{user}" #f"{self.usercodes[user]}+\033[0m"
+            desc_array[usage_idx] = f"S{user}" #f"{self.usercodes[user]}+\033[0m"
         else:
             desc_array[usage_idx] = f"P{user}" #f"{self.usercodes[user]}=\033[0m"
 
@@ -208,9 +236,8 @@ class ClusterStat:
         """Calling the cluster stat instance because I couldn't think of a good name for the function other 
         than `cluster_stat` which is redundant."""
 
-        #self.initialize_users() # must be called first 
-        self.process_info() # must be called second
-        self.process_jobs() # third..
+        self.process_info() # must be called first
+        self.process_jobs() # second..
         #self.print_unallocated_gpus("gpsc7")
 
 
