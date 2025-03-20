@@ -241,9 +241,10 @@ class Display:
         max_title_len = max(len(t) for t in title)
         # prepare the multi-line title :)
         for t in title:
-            t[0] = "\033[5m"+t[0]
-            t[-1] = t[-1] + "\033[0m"
-            self._screen[row, column:column+len(t)] = t 
+            if t:
+                t[0] = "\033[5m" + t[0]
+                t[-1] = t[-1] + "\033[0m"
+                self._screen[row, column:column+len(t)] = t 
             row+=1
         self.row = row
 
