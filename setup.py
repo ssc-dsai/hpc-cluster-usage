@@ -5,14 +5,14 @@ from glob import glob
 
 scripts = glob('bin/*')
 
-setup(name='wslurm',
+setup(name='hpc_monitor',
       version='0.2',
       description='Colorful clusters',
       long_description=open('README.rst').read(),
       author='Tom Daff',
       author_email='tdd20@cam.ac.uk',
       license='BSD',
-      packages=['wslurm'],
+      packages=['hpc_monitor'],
       scripts=scripts,
       classifiers=["Programming Language :: Python",
                    "Programming Language :: Python :: 3",
@@ -21,4 +21,15 @@ setup(name='wslurm',
                    "Intended Audience :: System Administrators",
                    "License :: OSI Approved :: BSD License",
                    "Operating System :: OS Independent",
-                   "Topic :: System :: Monitoring"])
+                   "Topic :: System :: Monitoring"],
+      install_requires = [
+          "numpy",
+          "argparse",
+          "pyfiglet",
+      ],
+      entry_points={
+          'console_scripts': [
+              'cluster_stat=hpc_monitor.cluster_stat:main',
+          ]
+      },
+)

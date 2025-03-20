@@ -190,3 +190,23 @@ class ClusterStat:
         self.process_jobs() # second..
 
 
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Graphical representation of HPC usage.")
+    parser.add_argument('--clusters', '-M', default='all', help='Specify the cluster to display on screen.')
+    parser.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
+    return parser.parse_args()
+
+def main():
+    args = parse_args()
+    args_dict = vars(args)
+    cs = ClusterStat(**args_dict)
+    cs()
+    screen = Display(**args_dict)
+    screen.cluster_stat = cs
+    screen.initialize_usercodes()
+    print(screen)
+
+if __name__ == '__main__':
+    main()
+
