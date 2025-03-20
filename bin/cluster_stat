@@ -61,9 +61,7 @@ def replace_with_ranges(input_str):
 def parse_args():
     parser = argparse.ArgumentParser(description="Graphical representation of HPC usage.")
     parser.add_argument('--clusters', '-M', default='all', help='Specify the cluster to display on screen.')
-    parser.add_argument('--verbose', '-v', action='store_true', help='Print out more usage details for each node.')
     parser.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
-    parser.add_argument('--truncate-gpus', '-t', action='store_true', help='Shorten the CPU usage on GPU clusters.')
     return parser.parse_args()
 
 def main():

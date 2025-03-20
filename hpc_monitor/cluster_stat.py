@@ -9,27 +9,6 @@ import getpass
 import subprocess
 from .sqstat import sinfof, squeuef, sinfof_local, squeuef_local
 
-def replace_with_ranges(string):
-    numbers = sorted(map(int, string.split(",")))
-    ranges = []
-    start = numbers[0]
-    end = numbers[0]
-    for num in numbers[1:]:
-        if num == end+1:
-            end = num
-        else:
-            if start == end:
-                ranges.append(f"{start}")
-            else:
-                ranges.append(f"{start}-{end}")
-            start = num
-            end = num
-    if start == end:
-        ranges.append(f"{start}")
-    else:
-        ranges.append(f"{start}-{end}")
-    return ",".join(ranges)
-
 
 class ClusterStat:
     def __init__(self, *args, **kwargs):
@@ -203,41 +182,11 @@ class ClusterStat:
         for gpuid, gpus_string in enumerate(job['gres_detail']):
             self.process_gpu_usage(node_names[gpuid], gpus_string, len(job['gres_detail']), cluster, user)
 
-    def print_unallocated_gpus(self, cluster):
-        max_gpu = 0
-        min_gpu = np.inf
-        total_free = 0
-        free_nodes = 0
-
-        if cluster not in self.resource_gpu.keys():
-            print(f"No GPUs found on cluster {cluster}.")
-            return
-        for node in sorted(self.resource_gpu[cluster].keys()):
-            for gpu_name in sorted(self.resource_gpu[cluster][node].keys()):
-                gpu_arr = self.resource_gpu[cluster][node][gpu_name]
-                empty_idx = np.where(gpu_arr == 0)
-                n_empty = len(empty_idx[0])
-                if n_empty != 0:
-                    if free_nodes == 0:
-                        print(f"Unallocated GPUs:")
-                    free_nodes += 1
-                    range_string = ", ".join([str(i) for i in empty_idx[0]])
-                    truncated_string = replace_with_ranges(range_string)
-                    print(f"{node}:{gpu_name}:{n_empty}(IDX:{truncated_string})")
-                    max_gpu = n_empty if n_empty > max_gpu else max_gpu
-                    min_gpu = n_empty if n_empty < min_gpu else min_gpu
-                    total_free += n_empty
-        if free_nodes == 0:
-            print("\n")
-        print(f"Total GPUs available: {total_free} across {free_nodes} nodes.\nPer node: (MIN {min_gpu}, MAX {max_gpu})")
-
-
     def __call__(self):
         """Calling the cluster stat instance because I couldn't think of a good name for the function other 
         than `cluster_stat` which is redundant."""
 
         self.process_info() # must be called first
         self.process_jobs() # second..
-        #self.print_unallocated_gpus("gpsc7")
 
 
