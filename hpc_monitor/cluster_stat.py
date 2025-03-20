@@ -4,11 +4,11 @@ from collections import OrderedDict
 import numpy as np
 
 import json
-
+import argparse
 import getpass
 import subprocess
 from .sqstat import sinfof, squeuef, sinfof_local, squeuef_local
-
+from .screen import Display
 
 class ClusterStat:
     def __init__(self, *args, **kwargs):
