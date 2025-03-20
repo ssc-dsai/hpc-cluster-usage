@@ -55,6 +55,13 @@ class Display:
         # keep the active user the same color
         self._usercodes[getpass.getuser()] = "\033[104;39;1m"
 
+    def cpu_data_to_screen(self, cluster, row, lcolumn):
+        pass
+    def summary_to_screen(self, cluster, row, lcolumn):
+        pass
+    def gpu_data_to_screen(self, cluster, row, lcolumn):
+        pass
+
     def format_output(self, cluster):
         """Prepare the _screen array with colors and such."""
         self.flush_screen
@@ -95,8 +102,6 @@ class Display:
                 s_or_p = "=" if e[0] == "P" else "+"
                 desc[idx] = f"{self._usercodes[user]}{s_or_p}\033[0m"
 
-            if node == "ib14gpu-001":
-                pass
             # if the number of cores is too long for the screen, split the line
             if desc.shape[0] > self.max_repr_len:
                 # indent for the padding of the sencond+ row(s)
