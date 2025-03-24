@@ -77,6 +77,11 @@ class ClusterStat:
                 self.users.setdefault(cluster, OrderedDict())
                 user = job['user_name']
                 self.users[cluster].setdefault(user, OrderedDict())
+                group_name = job['group_name']
+                self.users[cluster][user]['group'] = group_name 
+                # below branch stuff is very HPCO specific.
+                branch = group_name.split("_")[0].upper()
+                self.users[cluster][user]['branch'] = branch 
                 alloc = self.parse_alloc_string(job['tres_req_str'])
                 if job['job_state'][0] == "RUNNING":
                     self.users[cluster][user].setdefault("RUNNING", [])

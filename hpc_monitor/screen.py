@@ -16,14 +16,20 @@ def replace_with_ranges(string):
         if num == end+1:
             end = num
         else:
-            if start == end:
+            if (start == end):
                 ranges.append(f"{start}")
+            elif start == (end-1):
+                ranges.append(f"{start}")
+                ranges.append(f"{end}")
             else:
                 ranges.append(f"{start}-{end}")
             start = num
             end = num
     if start == end:
         ranges.append(f"{start}")
+    elif start == (end-1):
+        ranges.append(f"{start}")
+        ranges.append(f"{end}")
     else:
         ranges.append(f"{start}-{end}")
     return ",".join(ranges)
@@ -165,9 +171,12 @@ class Display:
    
     def user_data_to_screen(self, cluster, row, column):
         self.row = row
-        max_user_length = max(len(x) for x in self.cluster_stat.users[cluster])
+        max_user_length = max(len(x) for x in self.cluster_stat.users[cluster]) + 2
 
-        h = list([f"{'USER':>{max_user_length}s}", 
+        max_branch_length = max(len(val['branch']) for x,val in self.cluster_stat.users[cluster].items()) + 2
+
+        h = list([f"{'USER':>{max_user_length}s}",
+                  f"{'BRANCH':>{max_branch_length}s}",
                   f"{'CPU_R':>8s}", 
                   f"{'CPU_Q':>8s}", 
                   f"{'GPU_R':>8s}", 
@@ -192,6 +201,7 @@ class Display:
 
             nline = [f"{self._usercodes[user]}"]
             nline += list([f"{user:>{max_user_length}s}", 
+                           f"{stats['branch']:>{max_branch_length}s}",
                            f"{cpu_r:>8d}", 
                            f"{cpu_q:>8d}",
                            f"{gpu_r:>8d}",

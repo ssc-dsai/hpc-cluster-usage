@@ -26,6 +26,7 @@ setup(name='hpc_monitor',
           "numpy",
           "argparse",
           "pyfiglet",
+          "xmltodict",
       ],
       entry_points={
           'console_scripts': [
