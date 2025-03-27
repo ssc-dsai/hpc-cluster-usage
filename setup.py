@@ -6,7 +6,7 @@ from glob import glob
 scripts = glob('bin/*')
 
 setup(name='hpc_monitor',
-      version='0.2',
+      version='0.3',
       description='Colorful clusters',
       long_description=open('README.rst').read(),
       author='Tom Daff',
@@ -31,6 +31,7 @@ setup(name='hpc_monitor',
       entry_points={
           'console_scripts': [
               'cluster_stat=hpc_monitor.cluster_stat:main',
+              'gpu_usage=hpc_monitor.cluster_stat:job_main',
           ]
       },
 )
