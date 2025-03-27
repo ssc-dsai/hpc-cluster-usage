@@ -7,6 +7,32 @@ import pyfiglet
 from collections import OrderedDict
 np.set_printoptions(linewidth=np.inf, threshold=np.inf)
 
+def parse_gpu_info(gpu_data):
+    """ memory reported in MiB.
+    1 GB == 953.674 MiB
+
+    util's reported in %
+    """
+    total_mem = re.search(r'(\d+) MiB', gpu_data['fb_memory_usage']['total']).group(1)
+    free_mem = re.search(r'(\d+) MiB', gpu_data['fb_memory_usage']['free']).group(1)
+    used_mem = re.search(r'(\d+) MiB', gpu_data['fb_memory_usage']['used']).group(1)
+    res_mem = re.search(r'(\d+) MiB', gpu_data['fb_memory_usage']['reserved']).group(1) 
+    name = gpu_data['product_name']
+    ide = gpu_data['@id']
+    # below utils will not be reported if MIG is enabled - Multi-Instance GPU: partitioning a GPU into smaller GPUs.
+    core_util = re.search(r'(\d+) %', gpu_data['utilization']['gpu_util']).group(1)
+    mem_util = re.search(r'(\d+) %', gpu_data['utilization']['memory_util']).group(1)
+    # decoder_util, encoder_util, jpeg_util, ofa_util
+    return {"name": name,
+            "id": ide,
+            "core_util": core_util,
+            "mem_util": mem_util,
+            "total_mem": total_mem,
+            "free_mem": free_mem,
+            "used_mem": used_mem,
+            "res_mem": res_mem,
+    }
+
 def replace_with_ranges(string):
     numbers = sorted(map(int, string.split(",")))
     ranges = []
@@ -258,6 +284,29 @@ class Display:
             row+=1
         self.row = row
 
+    def gpu_progress_bar(self, value, maximum, width=12, show_value=True, colour='\033[0;34m',
+            label=None, append=""):
+        """
+        Generate a visual representation of progress.
+        """
+        bar = []
+        if label is not None:
+            bar.append(label)
+   
+        used = int(width*value/maximum)
+        if used > maximum:
+            used = width
+        elif used < 0:
+            used = 0
+        unused = width - used
+        bar.extend(['[', colour, '|'*used, '.'*unused, '\033[0m', ']'])
+   
+        if show_value:
+            bar.append(f' {int(value)}/{int(maximum)}')
+            bar.append(f' {append}')
+   
+        return "".join(bar)
+
     def gpu_summary(self, cluster, row, column):
         self.row = row
         min_gpu = np.inf
@@ -293,6 +342,57 @@ class Display:
             self.max_line_length = max(len(line), self.max_line_length)
             self._screen[row, column:column+len(line)] = line
             row += 1
+
+    def print_gpu_usage(self)
+        DIV=1000 #953.674
+        # below has a hard time when multi node configuration of job.
+        # google "slurm how to log into a job" for multi-node suggestions..
+        # https://stackoverflow.com/questions/63366098/rejoin-a-bash-slurm-job
+        # Try the 'ssh=True' option in the comments section of the job submission.
+        # https://portal.science.gc.ca/xwiki/bin/view/Projects/Science/Tutorials%20and%20HowTos/Quick%20Start%20to%20Using%20Linux%20Clusters%20With%20SLURM/
+        out = jump_on_job_smi_output(self.jobid)
+
+        #out = new_job_smi_output()
+        out_spl = [i for i in out.decode('utf-8').split("NODENAME=") if i]
+        #for i in out_spl:
+        #    print(f"\n\n\n\n\n\n\n\n\n\n\n\n{i}\n\n\n\n\n")
+            # something wierd going on with multi nodes.
+        for node in out_spl:
+            out_lines = node.splitlines()
+            (node_name, procid) = out_lines[0].split(":")
+            data = xmltodict.parse("\n".join(out_lines[1:]))
+            title = pyfiglet.figlet_format(node_name, justify='center', font='small')
+            print(title)
+            #print(json.dumps(data,
+            #                 sort_keys=True,
+            #                 indent=4,
+            #                 separators=(',', ': '),
+            #     )
+            #)
+            gpus_on_node = int(data['nvidia_smi_log']['attached_gpus'])
+            if gpus_on_node == 1:
+                gpu = parse_gpu_info(data['nvidia_smi_log']['gpu'])
+                print(f"{gpu['name']}: {gpu['id']}")
+                mem_bar = progress_bar(float(gpu['used_mem'])/DIV, 
+                                       float(gpu['total_mem'])/DIV, 
+                                       width=40,
+                                       label=f"{'Memory':>20s}",
+                                       append="GB")
+                gpu_bar = progress_bar(int(gpu['core_util']),
+                                       100,
+                                       width=40,
+                                       label=f"{'GPU Core Usage':>20s}",
+                                       colour='\033[0;32m',
+                                       append="%") 
+        
+                #print(f"{gpu['name']}:{gpu['id']}:{gpu['core_util']}:{gpu['mem_util']}:{gpu['total_mem']}")
+                print(gpu_bar)
+                print(mem_bar)
+            else:
+                for gpu_data in data['nvidia_smi_log']['gpu']:
+                    gpu = parse_gpu_info(gpu_data)
+                    #print(f"{gpu['name']}:{gpu['id']}:{gpu['core_util']}:{gpu['mem_util']}:{gpu['total_mem']}")
+                    print(f"{gpu['name']}: {gpu['id']}")
 
     def cluster_title(self, cluster, row, column):
         title = pyfiglet.figlet_format(cluster, justify='center', font='standard').split("\n")

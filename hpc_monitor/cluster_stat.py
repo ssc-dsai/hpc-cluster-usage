@@ -7,7 +7,7 @@ import json
 import argparse
 import getpass
 import subprocess
-from .sqstat import sinfof, squeuef, sinfof_local, squeuef_local
+from .sqstat import sinfof, squeuef, sinfof_local, squeuef_local, job_smi
 from .screen import Display
 
 class ClusterStat:
@@ -195,15 +195,26 @@ class ClusterStat:
         self.process_jobs() # second..
 
 
+def parse_job_args():
+    parser = argparse.ArgumentParser(description="Graphical representation of GPU usage for a job.")
+    parser.add_argument('--clusters', '-M', default='all', help='Specify the cluster name the job is running on.')
+    parser.add_argument('jobid', default=0, nargs=1, type=int, help='Specify the SLURM jobid for the GPUs you wish to see.')
 
-def parse_args():
+
+def parse_cs_args():
     parser = argparse.ArgumentParser(description="Graphical representation of HPC usage.")
     parser.add_argument('--clusters', '-M', default='all', help='Specify the cluster to display on screen.')
     parser.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
     return parser.parse_args()
 
+def job_main():
+    args = parse_job_args()
+    args_dict = vars(args)
+    screen = Display(**args_dict)
+    screen.print_gpu_usage()
+
 def main():
-    args = parse_args()
+    args = parse_cs_args()
     args_dict = vars(args)
     cs = ClusterStat(**args_dict)
     cs()

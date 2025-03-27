@@ -12,7 +12,22 @@ from collections import OrderedDict
 from subprocess import Popen, PIPE
 import json
 import os
+import re
 
+def job_smi(jobid, cluster=None):
+    cluster_arg = ''
+    if cluster is not None:
+        cluster_arg = f'--cluster={cluster}'
+
+    args = ['srun',
+            '--export=ALL',
+            cluster_arg,
+            '--overlap',
+            f'--jobid=${jobid}',
+            '--gres=gpu:8',
+            'bash -c \'echo \"NODENAME=${SLURMD_NODENAME}:${SLURM_PROCID}\" && nvidia-smi -q -x\''
+    ]
+    return Popen(" ".join(args), shell=True, stdout=PIPE).stdout.read()
 
 def sinfof(clusters):
     if not isinstance(clusters, str):
