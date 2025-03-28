@@ -18,16 +18,22 @@ def job_smi(jobid, cluster=None):
     cluster_arg = ''
     if cluster is not None:
         cluster_arg = f'--cluster={cluster}'
-
     args = ['srun',
-            '--export=ALL',
             cluster_arg,
+            f'--jobid={jobid}',
             '--overlap',
-            f'--jobid=${jobid}',
             '--gres=gpu:8',
-            'bash -c \'echo \"NODENAME=${SLURMD_NODENAME}:${SLURM_PROCID}\" && nvidia-smi -q -x\''
+            'bash -c \'echo \"NODENAME=${SLURMD_NODENAME}:${SLURM_PROCID}\" > nvidia-out.$(printf %02d $SLURM_PROCID) && nvidia-smi -q -x >> nvidia-out.$(printf %02d $SLURM_PROCID)\'', 
     ]
-    return Popen(" ".join(args), shell=True, stdout=PIPE).stdout.read()
+    Popen(" ".join(args), shell=True, stdout=PIPE).stdout.read()
+    # Now that we pipe output to files, need to read them.
+    out = ""
+    for filename in [i for i in os.listdir(".") if i.startswith("nvidia-out.")]:
+        with open(filename, 'r') as f:
+            out += f.read()
+        f.close()
+        os.remove(filename)
+    return out
 
 def sinfof(clusters):
     if not isinstance(clusters, str):

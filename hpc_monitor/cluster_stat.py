@@ -197,8 +197,10 @@ class ClusterStat:
 
 def parse_job_args():
     parser = argparse.ArgumentParser(description="Graphical representation of GPU usage for a job.")
-    parser.add_argument('--clusters', '-M', default='all', help='Specify the cluster name the job is running on.')
-    parser.add_argument('jobid', default=0, nargs=1, type=int, help='Specify the SLURM jobid for the GPUs you wish to see.')
+    parser.add_argument('jobid', type=int, help='Specify the SLURM jobid for the GPUs you wish to see.')
+    parser.add_argument('--cluster', '-M', default='all', help='Specify the cluster name the job is running on.')
+    parser.add_argument('--local', action='store_true', help='Tell the program to search the directory for GPU usage files.')
+    return parser.parse_args()
 
 
 def parse_cs_args():

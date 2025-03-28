@@ -1,10 +1,14 @@
 import numpy as np
+import xmltodict
 import os
 from math import ceil
 import sys
 import getpass
 import pyfiglet
 from collections import OrderedDict
+import json
+from .sqstat import job_smi
+import re
 np.set_printoptions(linewidth=np.inf, threshold=np.inf)
 
 def parse_gpu_info(gpu_data):
@@ -69,7 +73,6 @@ class Display:
             self._width, self._height = os.get_terminal_size()
         except OSError:
             self._width, self._height = 100, 70
-
         # index errors :(
         self._width, self._height = (2000, 900)
         # maximum length a node can be represented on a terminal line
@@ -343,20 +346,18 @@ class Display:
             self._screen[row, column:column+len(line)] = line
             row += 1
 
-    def print_gpu_usage(self)
+    def print_gpu_usage(self):
         DIV=1000 #953.674
         # below has a hard time when multi node configuration of job.
         # google "slurm how to log into a job" for multi-node suggestions..
         # https://stackoverflow.com/questions/63366098/rejoin-a-bash-slurm-job
         # Try the 'ssh=True' option in the comments section of the job submission.
         # https://portal.science.gc.ca/xwiki/bin/view/Projects/Science/Tutorials%20and%20HowTos/Quick%20Start%20to%20Using%20Linux%20Clusters%20With%20SLURM/
-        out = jump_on_job_smi_output(self.jobid)
+        out = job_smi(self.jobid, cluster=self.cluster)
 
         #out = new_job_smi_output()
-        out_spl = [i for i in out.decode('utf-8').split("NODENAME=") if i]
-        #for i in out_spl:
-        #    print(f"\n\n\n\n\n\n\n\n\n\n\n\n{i}\n\n\n\n\n")
-            # something wierd going on with multi nodes.
+        out_spl = [i for i in out.split("NODENAME=") if i]
+        # something wierd going on with multi nodes.
         for node in out_spl:
             out_lines = node.splitlines()
             (node_name, procid) = out_lines[0].split(":")
@@ -388,11 +389,28 @@ class Display:
                 #print(f"{gpu['name']}:{gpu['id']}:{gpu['core_util']}:{gpu['mem_util']}:{gpu['total_mem']}")
                 print(gpu_bar)
                 print(mem_bar)
+                print()
             else:
                 for gpu_data in data['nvidia_smi_log']['gpu']:
                     gpu = parse_gpu_info(gpu_data)
                     #print(f"{gpu['name']}:{gpu['id']}:{gpu['core_util']}:{gpu['mem_util']}:{gpu['total_mem']}")
                     print(f"{gpu['name']}: {gpu['id']}")
+                    mem_bar = progress_bar(float(gpu['used_mem'])/DIV, 
+                                           float(gpu['total_mem'])/DIV, 
+                                           width=40,
+                                           label=f"{'Memory':>20s}",
+                                           append="GB",
+                    )
+                    gpu_bar = progress_bar(int(gpu['core_util']),
+                                           100,
+                                           width=40,
+                                           label=f"{'GPU Core Usage':>20s}",
+                                           colour='\033[0;32m',
+                                           append="%",
+                    )
+                    print(gpu_bar)
+                    print(mem_bar)
+                    print()
 
     def cluster_title(self, cluster, row, column):
         title = pyfiglet.figlet_format(cluster, justify='center', font='standard').split("\n")
