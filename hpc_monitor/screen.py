@@ -374,17 +374,17 @@ class Display:
             if gpus_on_node == 1:
                 gpu = parse_gpu_info(data['nvidia_smi_log']['gpu'])
                 print(f"{gpu['name']}: {gpu['id']}")
-                mem_bar = progress_bar(float(gpu['used_mem'])/DIV, 
-                                       float(gpu['total_mem'])/DIV, 
-                                       width=40,
-                                       label=f"{'Memory':>20s}",
-                                       append="GB")
-                gpu_bar = progress_bar(int(gpu['core_util']),
-                                       100,
-                                       width=40,
-                                       label=f"{'GPU Core Usage':>20s}",
-                                       colour='\033[0;32m',
-                                       append="%") 
+                mem_bar = self.gpu_progress_bar(float(gpu['used_mem'])/DIV, 
+                                                float(gpu['total_mem'])/DIV, 
+                                                width=40,
+                                                label=f"{'Memory':>20s}",
+                                                append="GB")
+                gpu_bar = self.gpu_progress_bar(int(gpu['core_util']),
+                                                100,
+                                                width=40,
+                                                label=f"{'GPU Core Usage':>20s}",
+                                                colour='\033[0;32m',
+                                                append="%") 
         
                 #print(f"{gpu['name']}:{gpu['id']}:{gpu['core_util']}:{gpu['mem_util']}:{gpu['total_mem']}")
                 print(gpu_bar)
@@ -395,18 +395,18 @@ class Display:
                     gpu = parse_gpu_info(gpu_data)
                     #print(f"{gpu['name']}:{gpu['id']}:{gpu['core_util']}:{gpu['mem_util']}:{gpu['total_mem']}")
                     print(f"{gpu['name']}: {gpu['id']}")
-                    mem_bar = progress_bar(float(gpu['used_mem'])/DIV, 
-                                           float(gpu['total_mem'])/DIV, 
-                                           width=40,
-                                           label=f"{'Memory':>20s}",
-                                           append="GB",
+                    mem_bar = self.gpu_progress_bar(float(gpu['used_mem'])/DIV, 
+                                                    float(gpu['total_mem'])/DIV, 
+                                                    width=40,
+                                                    label=f"{'Memory':>20s}",
+                                                    append="GB",
                     )
-                    gpu_bar = progress_bar(int(gpu['core_util']),
-                                           100,
-                                           width=40,
-                                           label=f"{'GPU Core Usage':>20s}",
-                                           colour='\033[0;32m',
-                                           append="%",
+                    gpu_bar = self.gpu_progress_bar(int(gpu['core_util']),
+                                                    100,
+                                                    width=40,
+                                                    label=f"{'GPU Core Usage':>20s}",
+                                                    colour='\033[0;32m',
+                                                    append="%",
                     )
                     print(gpu_bar)
                     print(mem_bar)
