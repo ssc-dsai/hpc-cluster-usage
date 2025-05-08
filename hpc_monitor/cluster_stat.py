@@ -141,12 +141,17 @@ class ClusterStat:
         for cluster, sinfo_list in self.sinfo.items():
             for info in sinfo_list['sinfo']:
                 node_name = info['nodes']['nodes'][0]
+                # state info['node']['state'] = ["DOWN", "DRAIN", "NOT_RESPONDING"]
                 cores_per_socket = info['cores']['maximum']
                 n_sockets = info['sockets']['maximum']
                 n_cpus = int(cores_per_socket) * int(n_sockets)
                 gpus_string = info['gres']['total']
                 gpu_name = None
                 gpu_count = 0
+                node_states = info['node']['state']
+                down_node = False
+                if ("DOWN" in node_states) or ("DRAIN" in node_states) or ("NOT_RESPONDING" in node_states):
+                    down_node = True
 
                 if gpus_string:
                     gpus_list = re.split(r'[:()\s]+', gpus_string)
@@ -158,11 +163,17 @@ class ClusterStat:
                     self.resource_gpu_desc[cluster].setdefault(node_name, OrderedDict())
                     self.resource_gpu[cluster][node_name].setdefault(gpu_name, np.zeros(gpu_count, dtype=object))
                     self.resource_gpu_desc[cluster][node_name].setdefault(gpu_name, np.zeros(gpu_count, dtype=object))
+                    if down_node:
+                        self.resource_gpu[cluster][node_name][gpu_name].fill(-1)
+                        self.resource_gpu_desc[cluster][node_name][gpu_name].fill(-1)
 
                 self.resource_list.setdefault(cluster, OrderedDict())
                 self.resource_desc.setdefault(cluster, OrderedDict())
                 self.resource_list[cluster].setdefault(node_name, np.zeros(n_cpus, dtype=object))
                 self.resource_desc[cluster].setdefault(node_name, np.zeros(n_cpus, dtype=object))
+                if down_node:
+                    self.resource_desc[cluster][node_name].fill(-1)
+                    self.resource_desc[cluster][node_name].fill(-1)
             
                 self.node_data.setdefault(cluster, OrderedDict())
                 self.node_data[cluster][node_name] = {
