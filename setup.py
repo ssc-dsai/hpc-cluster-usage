@@ -6,7 +6,7 @@ from glob import glob
 scripts = glob('bin/*')
 
 setup(name='hpc_monitor',
-      version='0.3',
+      version='0.4',
       description='Colorful clusters',
       long_description=open('README.rst').read(),
       author='Tom Daff',

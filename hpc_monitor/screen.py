@@ -128,7 +128,7 @@ class Display:
             #n_total += (used[0].shape[0] + not_used[0].shape[0])
             # set cpus not used to green
             desc[not_used] = '\033[0m\033[42m \033[0m'
-            desc[bad] = '\033[0m\033[41m\033[1;37X\033[0m'
+            desc[bad] = '\033[0m\033[41m\033[5m\033[1;37mX\033[0m'
             for i, idx in np.ndenumerate(used):
                 e = desc[idx]
                 user=e[1:].strip()
@@ -259,7 +259,7 @@ class Display:
                 used = np.where(res > 0)
                 bad = np.where(res == -1)
                 desc[not_used] = '\033[0m\033[42m \033[0m'
-                desc[bad] = '\033[0m\033[41m\033[1;37X\033[0m'
+                desc[bad] = '\033[0m\033[41m\033[5m\033[1;37mX\033[0m'
                 for i, idx in np.ndenumerate(used):
                     e = desc[idx]
                     user=e[1:].strip()

@@ -172,7 +172,7 @@ class ClusterStat:
                 self.resource_list[cluster].setdefault(node_name, np.zeros(n_cpus, dtype=object))
                 self.resource_desc[cluster].setdefault(node_name, np.zeros(n_cpus, dtype=object))
                 if down_node:
-                    self.resource_desc[cluster][node_name].fill(-1)
+                    self.resource_list[cluster][node_name].fill(-1)
                     self.resource_desc[cluster][node_name].fill(-1)
             
                 self.node_data.setdefault(cluster, OrderedDict())
