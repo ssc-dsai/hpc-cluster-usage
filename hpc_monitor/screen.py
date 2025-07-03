@@ -207,7 +207,7 @@ class Display:
         max_branch_length = max(len(val['branch']) for x,val in self.cluster_stat.users[cluster].items()) + 2
 
         h = list([f"{'USER':>{max_user_length}s}",
-                  f"{'BRANCH':>{max_branch_length}s}",
+                  f"{'AGENCY':>{max_branch_length}s}",
                   f"{'CPU_R':>8s}", 
                   f"{'CPU_Q':>8s}", 
                   f"{'GPU_R':>8s}", 
