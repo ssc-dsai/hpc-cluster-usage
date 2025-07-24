@@ -110,8 +110,15 @@ class Display:
                     self._usercodes[user]
                 except KeyError:
                     user_id = user_id%256
-                    # avoid black 
+                    # avoid black and darker blues 
                     user_id = user_id+1 if user_id >= 16 else user_id
+                    user_id = user_id+1 if user_id >= 17 else user_id
+                    user_id = user_id+1 if user_id >= 18 else user_id
+                    user_id = user_id+1 if user_id >= 19 else user_id
+                    user_id = user_id+1 if user_id >= 20 else user_id
+                    user_id = user_id+1 if user_id >= 21 else user_id
+                    #print(f"{user=}: {user_id=}")
+                    #print(f"{user=}: {user_id=}")
                     self._usercodes[user] = f"\033[38;5;{user_id}m"
         # keep the active user the same color
         self._usercodes[getpass.getuser()] = "\033[104;39;1m"
