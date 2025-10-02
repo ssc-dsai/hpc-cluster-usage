@@ -13,6 +13,7 @@ from subprocess import Popen, PIPE
 import json
 import os
 import re
+import string
 
 def job_smi(jobid, cluster=None):
     cluster_arg = ''
@@ -98,40 +99,57 @@ def squeuef(clusters):
     #   --- JB_owner
     return squeue_obj
 
-def _read_local_json_file(filename):
-    with open(filename, 'r') as f: 
-        lines = f.readlines()
+def _read_local_json_file(filename, clusters):
+    #with open(filename, 'r') as f: 
+    #    lines = f.readlines()
     added_braces = []
-    for id, line in enumerate(lines):
-        nline = line.strip()
-        if nline.startswith('CLUSTER'):
-            cid = "\""+nline.split(":")[-1].strip()+"\""
-            if cid not in clusters:
-                continue
-            if id != 0:
-                #added_braces.append("},".rjust(5))
-                added_braces[-1] = added_braces[-1] + ","
-                added_braces.append(f"{cid}:")
-            else:
-                added_braces.append("{")
-                added_braces.append(f"{cid}:")
+    sinfo_obj = json.loads('{}')
 
-        elif (nline):
-            added_braces.append(nline)
+    print(filename)
+    search_string=r"CLUSTER"
+    cluster_line_regexp = rf'^(.*{search_string}.*)$'
+    line_regexp = rf"(?<={search_string})(.*?)(?:{search_string}|\Z)"
+    #line_regexp = rf"(?<=CLUSTER: gpsc8)(.*?)(?:CLUSTER|\Z)"
+    with open(filename, 'r') as f:
+        txt = f.read().rstrip() #string.join(f.readlines())
+    
+    clusters = re.findall(cluster_line_regexp, txt, re.MULTILINE)
+    matches = re.findall(line_regexp, txt, re.DOTALL| re.MULTILINE)
+    for i,m in zip(clusters, matches):
+        print(i, len(m))
+        print(m.lstrip(f": {i}").lstrip()[:20])
+        print(m[-20:])
+    #print(re.search(r'CLUSTER(.*?)CLUSTER', txt, re.MULTILINE|re.DOTALL).group(2))
+    #for id, line in enumerate(lines):
+    #    nline = line.strip()
+    #    if nline.startswith('CLUSTER'):
+    #        cid = "\""+nline.split(":")[-1].strip()+"\""
+    #        if cid not in clusters:
+    #            continue
+    #        if id != 0:
+    #            #added_braces.append("},".rjust(5))
+    #            added_braces[-1] = added_braces[-1] + ","
+    #            added_braces.append(f"{cid}:")
+    #        else:
+    #            added_braces.append("{")
+    #            added_braces.append(f"{cid}:")
 
-    added_braces.append("}")
-    sinfo_obj = json.loads("\n".join(added_braces))
+    #    elif (nline):
+    #        added_braces.append(nline)
+
+    #added_braces.append("}")
+    #sinfo_obj = json.loads("\n".join(added_braces))
     return sinfo_obj
 
 
 def sinfof_local(clusters):
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sinfo_out.json")
-    return _read_local_json_file(filename)
+    return _read_local_json_file(filename, clusters)
 
 def squeuef_local(clusters):
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "squeue_out.json")
-    return _read_local_json_file(filename)
+    return _read_local_json_file(filename, clusters)
     
 def sacctf_local(clusters):
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sacct_out.json")
-    return _read_local_json_file(filename)
+    return _read_local_json_file(filename, clusters)

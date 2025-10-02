@@ -23,16 +23,23 @@ class ClusterStat:
     @property
     def squeue(self):
         if not hasattr(self, "_squeue"):
-            self._squeue = squeuef(self.clusters)
-            #self._squeue = squeuef_local(self.clusters)
+            #self._squeue = squeuef(self.clusters)
+            self._squeue = squeuef_local(self.clusters)
         return self._squeue
     
     @property
     def sinfo(self):
         if not hasattr(self, "_sinfo"):
-            self._sinfo = sinfof(self.clusters)
-            #self._sinfo = sinfof_local(self.clusters)
+            #self._sinfo = sinfof(self.clusters)
+            self._sinfo = sinfof_local(self.clusters)
         return self._sinfo
+    
+    @property
+    def sacct(self):
+        if not hasattr(self, "_sinfo"):
+            #self._sacct = sacctf(self.clusters)
+            self._sacct = sacctf_local(self.clusters)
+        return self._sacct
 
     def parse_alloc_string(self, string):
         cpus = re.search(r'cpu=(\d+)', string, re.IGNORECASE)
