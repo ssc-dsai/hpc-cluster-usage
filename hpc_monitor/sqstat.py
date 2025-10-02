@@ -98,9 +98,8 @@ def squeuef(clusters):
     #   --- JB_owner
     return squeue_obj
 
-def sinfof_local(clusters):
-    filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sinfo_out.json")
-    with open(filename, 'r') as f:
+def _read_local_json_file(filename):
+    with open(filename, 'r') as f: 
         lines = f.readlines()
     added_braces = []
     for id, line in enumerate(lines):
@@ -124,29 +123,15 @@ def sinfof_local(clusters):
     sinfo_obj = json.loads("\n".join(added_braces))
     return sinfo_obj
 
+
+def sinfof_local(clusters):
+    filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sinfo_out.json")
+    return _read_local_json_file(filename)
+
 def squeuef_local(clusters):
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "squeue_out.json")
-    with open(filename, 'r') as f:
-        lines = f.readlines()
-    added_braces = []
-    for id, line in enumerate(lines):
-        nline = line.strip()
-        if nline.startswith('CLUSTER'):
-            cid = "\""+nline.split(":")[-1].strip()+"\""
-            if cid not in clusters:
-                continue
-            if id != 0:
-                #added_braces.append("},".rjust(5))
-                added_braces[-1] = added_braces[-1] + ","
-                added_braces.append(f"{cid}:")
-            else:
-                added_braces.append("{")
-                added_braces.append(f"{cid}:")
-
-        elif (nline):
-            added_braces.append(nline)
-
-    added_braces.append("}")
-    squeue_obj = json.loads("\n".join(added_braces))
-    return squeue_obj
-
+    return _read_local_json_file(filename)
+    
+def sacctf_local(clusters):
+    filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sacct_out.json")
+    return _read_local_json_file(filename)
