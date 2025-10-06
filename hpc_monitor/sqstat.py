@@ -100,8 +100,6 @@ def squeuef(clusters):
     return squeue_obj
 
 def _read_local_json_file(filename, clusters):
-    #with open(filename, 'r') as f: 
-    #    lines = f.readlines()
     added_braces = []
     sinfo_obj = json.loads('{}')
 
@@ -109,37 +107,18 @@ def _read_local_json_file(filename, clusters):
     search_string=r"CLUSTER"
     cluster_line_regexp = rf'^(.*{search_string}.*)$'
     line_regexp = rf"(?<={search_string})(.*?)(?:{search_string}|\Z)"
-    #line_regexp = rf"(?<=CLUSTER: gpsc8)(.*?)(?:CLUSTER|\Z)"
     with open(filename, 'r') as f:
         txt = f.read().rstrip() #string.join(f.readlines())
     
     clusters = re.findall(cluster_line_regexp, txt, re.MULTILINE)
     matches = re.findall(line_regexp, txt, re.DOTALL| re.MULTILINE)
+    return_dict = {}
     for i,m in zip(clusters, matches):
-        print(i, len(m))
-        print(m.lstrip(f": {i}").lstrip()[:20])
-        print(m[-20:])
-    #print(re.search(r'CLUSTER(.*?)CLUSTER', txt, re.MULTILINE|re.DOTALL).group(2))
-    #for id, line in enumerate(lines):
-    #    nline = line.strip()
-    #    if nline.startswith('CLUSTER'):
-    #        cid = "\""+nline.split(":")[-1].strip()+"\""
-    #        if cid not in clusters:
-    #            continue
-    #        if id != 0:
-    #            #added_braces.append("},".rjust(5))
-    #            added_braces[-1] = added_braces[-1] + ","
-    #            added_braces.append(f"{cid}:")
-    #        else:
-    #            added_braces.append("{")
-    #            added_braces.append(f"{cid}:")
-
-    #    elif (nline):
-    #        added_braces.append(nline)
-
-    #added_braces.append("}")
-    #sinfo_obj = json.loads("\n".join(added_braces))
-    return sinfo_obj
+        cluster_name = i.lstrip(f"{search_string}:").strip()
+        json_content = m.lstrip(f"{i}").lstrip()
+        json_dict = json.loads(json_content)
+        return_dict.update({cluster_name:json_dict}) 
+    return return_dict
 
 
 def sinfof_local(clusters):
