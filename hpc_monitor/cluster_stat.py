@@ -7,7 +7,9 @@ import json
 import argparse
 import getpass
 import subprocess
-from .sqstat import sinfof, squeuef, sinfof_local, squeuef_local, job_smi
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from .sqstat import sinfof, squeuef, sacctf, sinfof_local, squeuef_local, sacctf_local, job_smi
 from .screen import Display
 
 class ClusterStat:
@@ -36,7 +38,7 @@ class ClusterStat:
     
     @property
     def sacct(self):
-        if not hasattr(self, "_sinfo"):
+        if not hasattr(self, "_sacct"):
             #self._sacct = sacctf(self.clusters)
             self._sacct = sacctf_local(self.clusters)
         return self._sacct
@@ -205,6 +207,16 @@ class ClusterStat:
         for gpuid, gpus_string in enumerate(job['gres_detail']):
             self.process_gpu_usage(node_names[gpuid], gpus_string, len(job['gres_detail']), cluster, user)
 
+    def gpu_report(self):
+        """Prepare a usage report on GPUs.
+        """
+        # fill "" with NaN
+        df = self.sacct.ffill()
+        "gres/gpu:(.*?)="
+        df['gpu_type'] = df['AllocTRES'].str.extract("gres/gpu:(.*?)=")
+        df['gpu_count'] = df['AllocTRES'].str.extract("gres/gpu=(.*?),")
+        print(df[~df['gpu_type'].isna()])
+
     def __call__(self):
         """Calling the cluster stat instance because I couldn't think of a good name for the function other 
         than `cluster_stat` which is redundant."""
@@ -220,11 +232,19 @@ def parse_job_args():
     parser.add_argument('--local', action='store_true', help='Tell the program to search the directory for GPU usage files.')
     return parser.parse_args()
 
-
 def parse_cs_args():
     parser = argparse.ArgumentParser(description="Graphical representation of HPC usage.")
+    cluster_group = parser.add_argument_group("Cluster Stat Display")
+    report_group = parser.add_argument_group("Cluster Usage Report")
     parser.add_argument('--clusters', '-M', default='all', help='Specify the cluster to display on screen.')
-    parser.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
+    cluster_group.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
+    report_group.add_argument('--start-time', '-S', action='store', 
+                              help='Specify the start time for the report generation. Default is one month back.',
+                              default=(datetime.now() - relativedelta(months=1)).strftime("%m%d%y"))
+    report_group.add_argument('--end-time', '-E', action='store', 
+                              help='Specify the end time for the report generation. Default is today.',
+                              default=datetime.now().strftime("%m%d%y"))
+
     return parser.parse_args()
 
 def job_main():
@@ -233,6 +253,12 @@ def job_main():
     screen = Display(**args_dict)
     screen.print_gpu_usage()
 
+def sacct_main():
+    args = parse_cs_args()
+    args_dict = vars(args)
+    cs = ClusterStat(**args_dict)
+    cs.gpu_report()
+    
 def main():
     args = parse_cs_args()
     args_dict = vars(args)

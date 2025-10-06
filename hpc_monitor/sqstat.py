@@ -14,6 +14,7 @@ import json
 import os
 import re
 import string
+import pandas as pd
 
 def job_smi(jobid, cluster=None):
     cluster_arg = ''
@@ -99,11 +100,51 @@ def squeuef(clusters):
     #   --- JB_owner
     return squeue_obj
 
+def sacctf(clusters):
+    """Return squeue output as a dictionary"""
+    parse_format = OrderedDict({
+                    "CPUTime": 30,
+                    "NCPUS": 10,
+                    "NNodes": 8,
+                    "AllocTRES": 90,
+                    "ReqTRES": 90,
+                    "Elapsed": 14,
+                    "JobName": 100,
+                    "Account": 30,
+                    "AllocNodes": 30,
+                    "User": 30,
+                    "Group": 30,
+                    "NodeList": 30,
+                    "Start": 30,
+                    "End": 30,
+                    "State": 10,
+                    "Partition":10,
+    })
+    if not isinstance(clusters, str):
+        c = ",".join(clusters)
+    else:
+        c = clusters
+    format_string = ",".join([f"%{k}%{v}" for k, v in parse_format.items()])
+    sacct_args = ['sacct', '--allusers', '-M', c, '-S', self.start_date, '-E', self.end_date, '-o', format_string] # '--json']
+    sacct_str = Popen(squeue_args, stdout=PIPE).stdout.read()
+    sacct_obj = _parse_sacct_pipe(sacct_str, parse_format)
+    return pd.DataFrame(sacct_obj) 
+
+def _parse_sacct_pipe(string, parse_format):
+    data_lines = []
+    for line in string.splitlines()[2:]:
+        lcopy = line
+        line_dict = {}
+        for p,v in parse_format.items():
+            line_dict.update({p: lcopy[:v]})
+            lcopy = lcopy[v+1:]
+        data_lines.append(line_dict)
+    return data_lines
+
 def _read_local_json_file(filename, clusters):
     added_braces = []
     sinfo_obj = json.loads('{}')
 
-    print(filename)
     search_string=r"CLUSTER"
     cluster_line_regexp = rf'^(.*{search_string}.*)$'
     line_regexp = rf"(?<={search_string})(.*?)(?:{search_string}|\Z)"
@@ -112,12 +153,16 @@ def _read_local_json_file(filename, clusters):
     
     clusters = re.findall(cluster_line_regexp, txt, re.MULTILINE)
     matches = re.findall(line_regexp, txt, re.DOTALL| re.MULTILINE)
-    return_dict = {}
+    try:
+        return_dict = json.loads(txt)
+    except json.decoder.JSONDecodeError:
+        return_dict = {}
     for i,m in zip(clusters, matches):
         cluster_name = i.lstrip(f"{search_string}:").strip()
         json_content = m.lstrip(f"{i}").lstrip()
         json_dict = json.loads(json_content)
-        return_dict.update({cluster_name:json_dict}) 
+        return_dict.update({cluster_name:json_dict})
+    # return_dict.keys() = ['jobs', 'meta', 'errors', 'warnings']
     return return_dict
 
 
@@ -130,5 +175,25 @@ def squeuef_local(clusters):
     return _read_local_json_file(filename, clusters)
     
 def sacctf_local(clusters):
-    filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sacct_out.json")
-    return _read_local_json_file(filename, clusters)
+    parse_format = OrderedDict({
+                    "CPUTime": 30,
+                    "NCPUS": 10,
+                    "NNodes": 8,
+                    "AllocTRES": 90,
+                    "ReqTRES": 90,
+                    "Elapsed": 14,
+                    "JobName": 100,
+                    "Account": 30,
+                    "AllocNodes": 30,
+                    "User": 30,
+                    "Group": 30,
+                    "NodeList": 30,
+                    "Start": 30,
+                    "End": 30,
+                    "State": 10,
+                    "Partition":10,
+    })
+    filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sacct_out.csv")
+    with open(filename, 'r') as f:
+        sacct_string = f.read()
+    return pd.DataFrame(_parse_sacct_pipe(sacct_string, parse_format))
