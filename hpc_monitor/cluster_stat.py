@@ -1,7 +1,11 @@
 import re
 import sys
+import os
 from collections import OrderedDict
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 import json
 import argparse
@@ -215,7 +219,30 @@ class ClusterStat:
         "gres/gpu:(.*?)="
         df['gpu_type'] = df['AllocTRES'].str.extract("gres/gpu:(.*?)=")
         df['gpu_count'] = df['AllocTRES'].str.extract("gres/gpu=(.*?),")
-        print(df[~df['gpu_type'].isna()])
+        df['gpu_count'] = pd.to_numeric(df['gpu_count'], errors='coerce')
+        df['agency'] = df['Group'].str.split("_").str[0]
+        # some entries in Group are blank so get agency from 'Account'?
+        df['agency'] = df.apply(lambda x: x['agency'] if x['agency'].strip() != '' else x['Account'].split("_")[0], axis=1)
+        
+        df['agency'] = df['agency'].str.strip()
+        df['agency'] = df['agency'].str.upper()
+
+        #print(df.columns)
+        if self.start_time.year != self.end_time.year:
+            start_str = self.start_time.strftime('%a%e %B %Y')
+        else:
+            start_str = self.start_time.strftime('%a%e %B')
+        end_str = self.end_time.strftime('%a%e %B %Y')
+        TITLE = f"{self.clusters} GPU Count Per Job ({start_str} - {end_str})"
+        dfgpu = df[~df['gpu_type'].isna()]
+        
+        #plt.hist(dfgpu['gpu_count'], alpha=0.5)
+        ax = sns.histplot(data=dfgpu, x='gpu_count', hue='agency', multiple='stack')
+        ax.set_xlabel("GPUs Used")
+        ax.set_ylabel("Number of Jobs")
+        plt.title(TITLE)
+        plt.savefig(self.output)
+        print(f"File saved to {self.output}.")
 
     def __call__(self):
         """Calling the cluster stat instance because I couldn't think of a good name for the function other 
@@ -240,10 +267,13 @@ def parse_cs_args():
     cluster_group.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
     report_group.add_argument('--start-time', '-S', action='store', 
                               help='Specify the start time for the report generation. Default is one month back.',
-                              default=(datetime.now() - relativedelta(months=1)).strftime("%m%d%y"))
+                              default=(datetime.now() - relativedelta(months=1)))
     report_group.add_argument('--end-time', '-E', action='store', 
                               help='Specify the end time for the report generation. Default is today.',
-                              default=datetime.now().strftime("%m%d%y"))
+                              default=datetime.now())
+    report_group.add_argument('--output', '-o', action='store', 
+                              help='Set the output file name for the report (plot).',
+                              default=os.path.join(os.getcwd(), "plot.png"))
 
     return parser.parse_args()
 

@@ -125,7 +125,7 @@ def sacctf(clusters):
     else:
         c = clusters
     format_string = ",".join([f"%{k}%{v}" for k, v in parse_format.items()])
-    sacct_args = ['sacct', '--allusers', '-M', c, '-S', self.start_date, '-E', self.end_date, '-o', format_string] # '--json']
+    sacct_args = ['sacct', '--allusers', '-M', c, '-S', self.start_date.strftime("%m%d%y"), '-E', self.end_date.strftime("%m%d%y"), '-o', format_string] # '--json']
     sacct_str = Popen(squeue_args, stdout=PIPE).stdout.read()
     sacct_obj = _parse_sacct_pipe(sacct_str, parse_format)
     return pd.DataFrame(sacct_obj) 
