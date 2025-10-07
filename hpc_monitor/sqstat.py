@@ -44,25 +44,26 @@ def sinfof(clusters):
         c = clusters
     sinfo_args = ['sinfo', '-M', c, '--Node', '--json']
     sinfo_str = Popen(sinfo_args, stdout=PIPE).stdout.read()
-    added_braces = []
-    for id, line in enumerate(sinfo_str.decode('utf-8').split("\n")):
-        nline = line.strip()
-        if nline.startswith('CLUSTER'):
-            cid = "\""+nline.split(":")[-1].strip()+"\""
-            if id != 0:
-                #added_braces.append("},".rjust(5))
-                added_braces[-1] = added_braces[-1] + ","
-                added_braces.append(f"{cid}:")
-            else:
-                added_braces.append("{")
-                added_braces.append(f"{cid}:")
+    return _read_json_string(sinfo_str.decode('utf-8'))
+    #added_braces = []
+    #for id, line in enumerate(sinfo_str.decode('utf-8').split("\n")):
+    #    nline = line.strip()
+    #    if nline.startswith('CLUSTER'):
+    #        cid = "\""+nline.split(":")[-1].strip()+"\""
+    #        if id != 0:
+    #            #added_braces.append("},".rjust(5))
+    #            added_braces[-1] = added_braces[-1] + ","
+    #            added_braces.append(f"{cid}:")
+    #        else:
+    #            added_braces.append("{")
+    #            added_braces.append(f"{cid}:")
 
-        elif (nline):
-            added_braces.append(nline)
+    #    elif (nline):
+    #        added_braces.append(nline)
 
-    added_braces.append("}")
-    sinfo_obj = json.loads("\n".join(added_braces))
-    return sinfo_obj
+    #added_braces.append("}")
+    #sinfo_obj = json.loads("\n".join(added_braces))
+    #return sinfo_obj
 
 def squeuef(clusters):
     """Return squeue output as a dictionary"""
@@ -73,32 +74,34 @@ def squeuef(clusters):
         c = clusters
     squeue_args = ['squeue', '-M', c, '--json']
     squeue_str = Popen(squeue_args, stdout=PIPE).stdout.read()
+    return _read_json_string(squeue_str.decode('utf-8'))
+
     # have to insert curly braces at the outer level (CLUSTER)
-    added_braces = []
-    for id, line in enumerate(squeue_str.decode('utf-8').split("\n")):
-        nline = line.strip()
-        if nline.startswith('CLUSTER'):
-            cid = "\""+nline.split(":")[-1].strip()+"\""
-            if id != 0:
-                #added_braces.append("},".rjust(5))
-                added_braces[-1] = added_braces[-1] + ","
-                added_braces.append(f"{cid}:")
-            else:
-                added_braces.append("{")
-                added_braces.append(f"{cid}:")
+    #added_braces = []
+    #for id, line in enumerate(squeue_str.decode('utf-8').split("\n")):
+    #    nline = line.strip()
+    #    if nline.startswith('CLUSTER'):
+    #        cid = "\""+nline.split(":")[-1].strip()+"\""
+    #        if id != 0:
+    #            #added_braces.append("},".rjust(5))
+    #            added_braces[-1] = added_braces[-1] + ","
+    #            added_braces.append(f"{cid}:")
+    #        else:
+    #            added_braces.append("{")
+    #            added_braces.append(f"{cid}:")
 
-        elif (nline):
-            added_braces.append(nline)
+    #    elif (nline):
+    #        added_braces.append(nline)
 
-    added_braces.append("}")
-    squeue_obj = json.loads("\n".join(added_braces))
+    #added_braces.append("}")
+    #squeue_obj = json.loads("\n".join(added_braces))
     # node
     #   --- slots_total
     #   --- state
     # job_list
     #   --- slots
     #   --- JB_owner
-    return squeue_obj
+    #return squeue_obj
 
 def sacctf(clusters):
     """Return squeue output as a dictionary"""
@@ -141,15 +144,10 @@ def _parse_sacct_pipe(string, parse_format):
         data_lines.append(line_dict)
     return data_lines
 
-def _read_local_json_file(filename, clusters):
-    added_braces = []
-    sinfo_obj = json.loads('{}')
-
+def _read_json_string(txt):
     search_string=r"CLUSTER"
     cluster_line_regexp = rf'^(.*{search_string}.*)$'
     line_regexp = rf"(?<={search_string})(.*?)(?:{search_string}|\Z)"
-    with open(filename, 'r') as f:
-        txt = f.read().rstrip() #string.join(f.readlines())
     
     clusters = re.findall(cluster_line_regexp, txt, re.MULTILINE)
     matches = re.findall(line_regexp, txt, re.DOTALL| re.MULTILINE)
@@ -168,11 +166,15 @@ def _read_local_json_file(filename, clusters):
 
 def sinfof_local(clusters):
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sinfo_out.json")
-    return _read_local_json_file(filename, clusters)
+    with open(filename, 'r') as f:
+        txt = f.read().strip()
+    return _read_json_string(txt)
 
 def squeuef_local(clusters):
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "squeue_out.json")
-    return _read_local_json_file(filename, clusters)
+    with open(filename, 'r') as f:
+        txt = f.read().strip()
+    return _read_json_string(txt)
     
 def sacctf_local(clusters):
     parse_format = OrderedDict({
