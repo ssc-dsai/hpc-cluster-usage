@@ -43,7 +43,7 @@ class ClusterStat:
     @property
     def sacct(self):
         if not hasattr(self, "_sacct"):
-            self._sacct = sacctf(self.clusters)
+            self._sacct = sacctf(self.clusters, self.start_time.strftime('%m%d%y'), self.end_time.strftime('%m%d%y'), partition=self.partition)
             #self._sacct = sacctf_local(self.clusters)
         return self._sacct
 
@@ -251,6 +251,13 @@ class ClusterStat:
         self.process_info() # must be called first
         self.process_jobs() # second..
 
+def valid_datetime(arg_str):
+    try:
+        return datetime.strptime(arg_str, '%m%d%y')
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"Invalid datetime format '{arg_str}'. Expected format: mmddyy (e.g. Oct 7, 2025 == '100725')"
+        )
 
 def parse_job_args():
     parser = argparse.ArgumentParser(description="Graphical representation of GPU usage for a job.")
@@ -264,12 +271,15 @@ def parse_cs_args():
     cluster_group = parser.add_argument_group("Cluster Stat Display")
     report_group = parser.add_argument_group("Cluster Usage Report")
     parser.add_argument('--clusters', '-M', default='all', help='Specify the cluster to display on screen.')
+    parser.add_argument('--partition', '-P', default='', help='Specify a particular partition to extract data from.')
     cluster_group.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
     report_group.add_argument('--start-time', '-S', action='store', 
                               help='Specify the start time for the report generation. Default is one month back.',
+                              type=valid_datetime,
                               default=(datetime.now() - relativedelta(months=1)))
     report_group.add_argument('--end-time', '-E', action='store', 
                               help='Specify the end time for the report generation. Default is today.',
+                              type=valid_datetime,
                               default=datetime.now())
     report_group.add_argument('--output', '-o', action='store', 
                               help='Set the output file name for the report (plot).',

@@ -103,8 +103,8 @@ def squeuef(clusters):
     #   --- JB_owner
     #return squeue_obj
 
-def sacctf(clusters):
-    """Return squeue output as a dictionary"""
+def sacctf(clusters, start_time, end_time, partition=""):
+    """Return sacct output as a dictionary"""
     parse_format = OrderedDict({
                     "CPUTime": 30,
                     "NCPUS": 10,
@@ -127,10 +127,13 @@ def sacctf(clusters):
         c = ",".join(clusters)
     else:
         c = clusters
-    format_string = ",".join([f"%{k}%{v}" for k, v in parse_format.items()])
-    sacct_args = ['sacct', '--allusers', '-M', c, '-S', self.start_date.strftime("%m%d%y"), '-E', self.end_date.strftime("%m%d%y"), '-o', format_string] # '--json']
-    sacct_str = Popen(squeue_args, stdout=PIPE).stdout.read()
-    sacct_obj = _parse_sacct_pipe(sacct_str, parse_format)
+    if partition:
+        partition = f"--partition {partition}"
+    format_string = ",".join([f"{k}%{v}" for k, v in parse_format.items()])
+    sacct_args = ['sacct', '--allusers', '-M', c, partition, '-S', start_time, '-E', end_time, '-o', format_string] # '--json']
+    sacct_str = Popen(sacct_args, stdout=PIPE).stdout.read()
+    #print(sacct_str.decode('utf-8'))
+    sacct_obj = _parse_sacct_pipe(sacct_str.decode('utf-8'), parse_format)
     return pd.DataFrame(sacct_obj) 
 
 def _parse_sacct_pipe(string, parse_format):
