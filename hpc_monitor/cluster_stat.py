@@ -29,22 +29,28 @@ class ClusterStat:
     @property
     def squeue(self):
         if not hasattr(self, "_squeue"):
-            self._squeue = squeuef(self.clusters)
-            #self._squeue = squeuef_local(self.clusters)
+            if self.local:
+                self._squeue = squeuef_local(self.clusters)
+            else:
+                self._squeue = squeuef(self.clusters)
         return self._squeue
     
     @property
     def sinfo(self):
         if not hasattr(self, "_sinfo"):
-            self._sinfo = sinfof(self.clusters)
-            #self._sinfo = sinfof_local(self.clusters)
+            if self.local:
+                self._sinfo = sinfof_local(self.clusters)
+            else:
+                self._sinfo = sinfof(self.clusters)
         return self._sinfo
     
     @property
     def sacct(self):
         if not hasattr(self, "_sacct"):
-            self._sacct = sacctf(self.clusters, self.start_time.strftime('%m%d%y'), self.end_time.strftime('%m%d%y'), partition=self.partition)
-            #self._sacct = sacctf_local(self.clusters)
+            if self.local:
+                self._sacct = sacctf_local(self.clusters)
+            else:
+                self._sacct = sacctf(self.clusters, self.start_time.strftime('%m%d%y'), self.end_time.strftime('%m%d%y'), partition=self.partition)
         return self._sacct
 
     def parse_alloc_string(self, string):
@@ -235,9 +241,11 @@ class ClusterStat:
         end_str = self.end_time.strftime('%a%e %B %Y')
         TITLE = f"{self.clusters} GPU Count Per Job ({start_str} - {end_str})"
         dfgpu = df[~df['gpu_type'].isna()]
-        
+        # remove me
+        #print(dfgpu.loc[dfgpu['gpu_count'] > 10, 'User'])
         #plt.hist(dfgpu['gpu_count'], alpha=0.5)
         ax = sns.histplot(data=dfgpu, x='gpu_count', hue='agency', multiple='stack')
+        ax.set_yscale('log')
         ax.set_xlabel("GPUs Used")
         ax.set_ylabel("Number of Jobs")
         plt.title(TITLE)
@@ -259,19 +267,14 @@ def valid_datetime(arg_str):
             f"Invalid datetime format '{arg_str}'. Expected format: mmddyy (e.g. Oct 7, 2025 == '100725')"
         )
 
-def parse_job_args():
-    parser = argparse.ArgumentParser(description="Graphical representation of GPU usage for a job.")
-    parser.add_argument('jobid', type=int, help='Specify the SLURM jobid for the GPUs you wish to see.')
-    parser.add_argument('--cluster', '-M', default='all', help='Specify the cluster name the job is running on.')
-    parser.add_argument('--local', action='store_true', help='Tell the program to search the directory for GPU usage files.')
-    return parser.parse_args()
-
-def parse_cs_args():
+def parse_args():
     parser = argparse.ArgumentParser(description="Graphical representation of HPC usage.")
     cluster_group = parser.add_argument_group("Cluster Stat Display")
     report_group = parser.add_argument_group("Cluster Usage Report")
+    graphic_group = parser.add_argument_group("GPU Running Usage Report")
     parser.add_argument('--clusters', '-M', default='all', help='Specify the cluster to display on screen.')
     parser.add_argument('--partition', '-P', default='', help='Specify a particular partition to extract data from.')
+    parser.add_argument('--local', action='store_true', help='Tell the program to search the directory for GPU usage files.')
     cluster_group.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
     report_group.add_argument('--start-time', '-S', action='store', 
                               help='Specify the start time for the report generation. Default is one month back.',
@@ -284,23 +287,27 @@ def parse_cs_args():
     report_group.add_argument('--output', '-o', action='store', 
                               help='Set the output file name for the report (plot).',
                               default=os.path.join(os.getcwd(), "plot.png"))
+    graphic_group.add_argument('jobid', nargs='?', type=int, help='Specify the SLURM jobid for the GPUs you wish to see.')
 
     return parser.parse_args()
 
 def job_main():
-    args = parse_job_args()
+    args = parse_args()
     args_dict = vars(args)
+    if 'jobid' not in args_dict:
+        print(f"Error: please specify a jobid as a positional argument to the command.")
+        sys.exit()
     screen = Display(**args_dict)
     screen.print_gpu_usage()
 
 def sacct_main():
-    args = parse_cs_args()
+    args = parse_args()
     args_dict = vars(args)
     cs = ClusterStat(**args_dict)
     cs.gpu_report()
     
 def main():
-    args = parse_cs_args()
+    args = parse_args()
     args_dict = vars(args)
     cs = ClusterStat(**args_dict)
     cs()
