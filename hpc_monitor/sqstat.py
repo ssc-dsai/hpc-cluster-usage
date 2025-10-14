@@ -148,22 +148,46 @@ def _parse_sacct_pipe(string, parse_format):
     return data_lines
 
 def _read_json_string(txt):
-    search_string=r"CLUSTER"
-    cluster_line_regexp = rf'^(.*{search_string}.*)$'
-    line_regexp = rf"(?<={search_string})(.*?)(?:{search_string}|\Z)"
-    
-    clusters = re.findall(cluster_line_regexp, txt, re.MULTILINE)
-    matches = re.findall(line_regexp, txt, re.DOTALL| re.MULTILINE)
+    """Optimized JSON string parser for Slurm output."""
+    # Try to parse as single JSON first (faster path)
     try:
-        return_dict = json.loads(txt)
+        return json.loads(txt)
     except json.decoder.JSONDecodeError:
-        return_dict = {}
-    for i,m in zip(clusters, matches):
-        cluster_name = i.lstrip(f"{search_string}:").strip()
-        json_content = m.lstrip(f"{i}").lstrip()
-        json_dict = json.loads(json_content)
-        return_dict.update({cluster_name:json_dict})
-    # return_dict.keys() = ['jobs', 'meta', 'errors', 'warnings']
+        pass
+    
+    # Fallback to multi-cluster parsing with optimized approach
+    return_dict = {}
+    lines = txt.split('\n')
+    current_cluster = None
+    current_content = []
+    
+    for line in lines:
+        line = line.strip()
+        if line.startswith('CLUSTER:'):
+            # Process previous cluster if exists
+            if current_cluster and current_content:
+                try:
+                    json_content = '\n'.join(current_content)
+                    json_dict = json.loads(json_content)
+                    return_dict[current_cluster] = json_dict
+                except json.decoder.JSONDecodeError:
+                    pass
+            
+            # Start new cluster
+            current_cluster = line[8:].strip()  # Remove 'CLUSTER:' prefix
+            current_content = []
+        elif line and current_cluster:
+            current_content.append(line)
+    
+    # Process final cluster
+    if current_cluster and current_content:
+        try:
+            json_content = '\n'.join(current_content)
+            json_dict = json.loads(json_content)
+            return_dict[current_cluster] = json_dict
+        except json.decoder.JSONDecodeError:
+            pass
+    
     return return_dict
 
 

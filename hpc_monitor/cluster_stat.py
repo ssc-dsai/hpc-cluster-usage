@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import functools
+import time
 
 import json
 import argparse
@@ -15,6 +17,31 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from .sqstat import sinfof, squeuef, sacctf, sinfof_local, squeuef_local, sacctf_local, job_smi
 from .screen import Display
+
+def cache_result(ttl_seconds=30):
+    """Cache decorator with time-based expiration."""
+    def decorator(func):
+        cache = {}
+        
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            # Create cache key from args and kwargs
+            key = str(args) + str(sorted(kwargs.items()))
+            current_time = time.time()
+            
+            # Check if cached result exists and is still valid
+            if key in cache:
+                result, timestamp = cache[key]
+                if current_time - timestamp < ttl_seconds:
+                    return result
+            
+            # Execute function and cache result
+            result = func(*args, **kwargs)
+            cache[key] = (result, current_time)
+            return result
+        
+        return wrapper
+    return decorator
 
 class ClusterStat:
     def __init__(self, *args, **kwargs):
@@ -27,6 +54,7 @@ class ClusterStat:
         self.node_data = OrderedDict()
 
     @property
+    @cache_result(ttl_seconds=15)  # Cache for 15 seconds
     def squeue(self):
         if not hasattr(self, "_squeue"):
             if self.local:
@@ -36,6 +64,7 @@ class ClusterStat:
         return self._squeue
     
     @property
+    @cache_result(ttl_seconds=60)  # Cache for 60 seconds (sinfo changes less frequently)
     def sinfo(self):
         if not hasattr(self, "_sinfo"):
             if self.local:
@@ -53,28 +82,44 @@ class ClusterStat:
                 self._sacct = sacctf(self.clusters, self.start_time.strftime('%m%d%y'), self.end_time.strftime('%m%d%y'), partition=self.partition)
         return self._sacct
 
+    @cache_result(ttl_seconds=300)  # Cache for 5 minutes (allocation strings are often repeated)
     def parse_alloc_string(self, string):
-        cpus = re.search(r'cpu=(\d+)', string, re.IGNORECASE)
-        mem = re.search(r'(?<=mem=)[^,]*', string, re.IGNORECASE).group(0)
-        nodes = re.search(r'node=(\d+)', string, re.IGNORECASE)
-        gpus = re.search(r'gres/gpu=(\d+)', string, re.IGNORECASE)
-        cpus = int(cpus.group(1)) if cpus else 0
-        #mem = int(mem.group(1)) if mem else 0
-        nodes = int(nodes.group(1)) if nodes else 0
-        gpus = int(gpus.group(1)) if gpus else 0
+        """Optimized allocation string parser using single regex pass."""
+        # Single regex to capture all values at once
+        pattern = r'cpu=(\d+).*?mem=([^,]*).*?node=(\d+).*?gres/gpu=(\d+)'
+        match = re.search(pattern, string, re.IGNORECASE)
+        
+        if match:
+            cpus = int(match.group(1))
+            mem_str = match.group(2)
+            nodes = int(match.group(3))
+            gpus = int(match.group(4))
+        else:
+            # Fallback to individual searches if combined pattern fails
+            cpus = re.search(r'cpu=(\d+)', string, re.IGNORECASE)
+            mem_str = re.search(r'(?<=mem=)[^,]*', string, re.IGNORECASE)
+            nodes = re.search(r'node=(\d+)', string, re.IGNORECASE)
+            gpus = re.search(r'gres/gpu=(\d+)', string, re.IGNORECASE)
+            
+            cpus = int(cpus.group(1)) if cpus else 0
+            mem_str = mem_str.group(0) if mem_str else "0M"
+            nodes = int(nodes.group(1)) if nodes else 0
+            gpus = int(gpus.group(1)) if gpus else 0
+        
+        # Convert memory to megabytes
         n_mem = 0
-        # convert to megabytes
-        if mem.endswith("T"):
-            n_mem = int(float(mem[:-1])) * 1024 * 1024 
-        elif mem.endswith("G"):
-            n_mem = int(float(mem[:-1])) * 1024
-        elif mem.endswith("M"):
-            n_mem = int(float(mem[:-1]))
+        if mem_str.endswith("T"):
+            n_mem = int(float(mem_str[:-1])) * 1024 * 1024 
+        elif mem_str.endswith("G"):
+            n_mem = int(float(mem_str[:-1])) * 1024
+        elif mem_str.endswith("M"):
+            n_mem = int(float(mem_str[:-1]))
+        
         return {"cpus": cpus, "gpus": gpus, "mem": n_mem, "nodes": nodes}
 
 
     def process_jobs(self):
-        """Process jobs from squeue output.
+        """Process jobs from squeue output with optimized data structure operations.
         
         Possible job states are:
                     (BOOT_FAIL, 
@@ -91,49 +136,69 @@ class ClusterStat:
                      TIMEOUT,
         )
         """
+        # Pre-allocate data structures to avoid repeated setdefault calls
         for cluster in self.squeue.keys():
+            cluster_users = self.users.setdefault(cluster, OrderedDict())
+            
             for job in self.squeue[cluster]['jobs']:
-                self.users.setdefault(cluster, OrderedDict())
                 user = job['user_name']
-                self.users[cluster].setdefault(user, OrderedDict())
+                user_data = cluster_users.setdefault(user, OrderedDict())
+                
+                # Cache group_name and branch to avoid repeated string operations
                 group_name = job['group_name']
-                self.users[cluster][user]['group'] = group_name 
-                # below branch stuff is very HPCO specific.
-                branch = group_name.split("_")[0].upper()
-                self.users[cluster][user]['branch'] = branch 
+                if 'group' not in user_data:
+                    user_data['group'] = group_name
+                    # below branch stuff is very HPCO specific.
+                    user_data['branch'] = group_name.split("_")[0].upper()
+                
+                # Parse allocation string (now cached)
                 alloc = self.parse_alloc_string(job['tres_req_str'])
-                if job['job_state'][0] == "RUNNING":
-                    self.users[cluster][user].setdefault("RUNNING", [])
-                    self.users[cluster][user]["RUNNING"].append(alloc)
+                job_state = job['job_state'][0]
+                
+                if job_state == "RUNNING":
+                    running_jobs = user_data.setdefault("RUNNING", [])
+                    running_jobs.append(alloc)
                     self.process_running_job(job)
-                elif job['job_state'][0] == "PENDING":
-                    self.users[cluster][user].setdefault("PENDING", [])
-                    self.users[cluster][user]["PENDING"].append(alloc)
+                elif job_state == "PENDING":
+                    pending_jobs = user_data.setdefault("PENDING", [])
+                    pending_jobs.append(alloc)
                 else:
-                    print(f"{job['job_state'][0]} not considered yet!")
+                    print(f"{job_state} not considered yet!")
 
     def process_gpu_usage(self, node_name, gpus_string, n_nodes, cluster, user):
-        name_qty = re.sub(r'\([^)]*\)', '', gpus_string)
-        gpu_name = name_qty.split(":")[1]
-        n_gpus = int(name_qty.split(":")[-1])
-        gpu_idx = re.search(r'\((.*?)\)', gpus_string).group(1).split(":")[-1]
+        """Optimized GPU usage parser with single regex pass."""
+        # Single regex to extract all components at once
+        pattern = r'([^:]+):(\d+)\(([^)]+)\)'
+        match = re.search(pattern, gpus_string)
+        
+        if match:
+            gpu_name = match.group(1)
+            n_gpus = int(match.group(2))
+            gpu_idx_str = match.group(3)
+        else:
+            # Fallback to original method if regex fails
+            name_qty = re.sub(r'\([^)]*\)', '', gpus_string)
+            gpu_name = name_qty.split(":")[1]
+            n_gpus = int(name_qty.split(":")[-1])
+            gpu_idx_str = re.search(r'\((.*?)\)', gpus_string).group(1).split(":")[-1]
+        
+        # Parse GPU indices more efficiently
         gpu_range = []
-
-        for i in gpu_idx.split(','):
-            rangesplit = i.split("-")
-            if len(rangesplit)==1:
-                gpu_range.append(int(rangesplit[0]))
+        for i in gpu_idx_str.split(','):
+            i = i.lstrip("IDX:")
+            if '-' in i:
+                start, end = map(int, i.split('-'))
+                gpu_range.extend(range(start, end + 1))
             else:
-                range_i = [int(j) for j in rangesplit]
-                range_i[-1] += 1
-                gpu_range += list(range(*range_i))
+                gpu_range.append(int(i))
 
-        if (len(gpu_range) == 1) and (n_nodes <= 1):
-            self.resource_gpu[cluster][node_name][gpu_name][gpu_range] += 1
-            self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"S{user}" #f"{self.usercodes[user]}+\033[0m"
-        else: 
-            self.resource_gpu[cluster][node_name][gpu_name][gpu_range] += 1
-            self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"P{user}" #f"{self.usercodes[user]}=\033[0m"
+        # Determine if single or parallel job
+        is_single = (len(gpu_range) == 1) and (n_nodes <= 1)
+        user_prefix = "S" if is_single else "P"
+        
+        # Update resource tracking
+        self.resource_gpu[cluster][node_name][gpu_name][gpu_range] += 1
+        self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"{user_prefix}{user}"
     
     def process_cpu_usage(self, r_node, n_nodes, cluster, user):
         r_node_name = r_node['name']
