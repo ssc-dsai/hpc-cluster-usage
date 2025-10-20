@@ -22,24 +22,24 @@ def cache_result(ttl_seconds=30):
     """Cache decorator with time-based expiration."""
     def decorator(func):
         cache = {}
-        
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # Create cache key from args and kwargs
             key = str(args) + str(sorted(kwargs.items()))
             current_time = time.time()
-            
+
             # Check if cached result exists and is still valid
             if key in cache:
                 result, timestamp = cache[key]
                 if current_time - timestamp < ttl_seconds:
                     return result
-            
+
             # Execute function and cache result
             result = func(*args, **kwargs)
             cache[key] = (result, current_time)
             return result
-        
+
         return wrapper
     return decorator
 
@@ -151,9 +151,12 @@ class ClusterStat:
                     # below branch stuff is very HPCO specific.
                     user_data['branch'] = group_name.split("_")[0].upper()
                 
-                # Parse allocation string (now cached)
-                alloc = self.parse_alloc_string(job['tres_req_str'])
                 job_state = job['job_state'][0]
+                # Parse allocation string (now cached)
+                if job_state == "RUNNING":
+                    alloc = self.parse_alloc_string(job['tres_alloc_str'])
+                else:
+                    alloc = self.parse_alloc_string(job['tres_req_str'])
                 
                 if job_state == "RUNNING":
                     running_jobs = user_data.setdefault("RUNNING", [])

@@ -127,10 +127,11 @@ def sacctf(clusters, start_time, end_time, partition=""):
         c = ",".join(clusters)
     else:
         c = clusters
-    if partition:
-        partition = f"--partition {partition}"
     format_string = ",".join([f"{k}%{v}" for k, v in parse_format.items()])
-    sacct_args = ['sacct', '--allusers', '-M', c, partition, '-S', start_time, '-E', end_time, '-o', format_string] # '--json']
+    sacct_args = ['sacct', '--allusers', '-M', c, '-S', start_time, '-E', end_time, '-o', format_string] # '--json']
+    if partition:
+        sacct_args += ["--partition", partition]
+    #print(" ".join(sacct_args))
     sacct_str = Popen(sacct_args, stdout=PIPE).stdout.read()
     #print(sacct_str.decode('utf-8'))
     sacct_obj = _parse_sacct_pipe(sacct_str.decode('utf-8'), parse_format)
