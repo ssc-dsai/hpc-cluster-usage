@@ -225,6 +225,17 @@ class ClusterStat:
             desc_array[usage_idx] = f"P{user}" #f"{self.usercodes[user]}=\033[0m"
 
     def process_info(self):
+        """ Node name, 
+            cores per socket (cores - maximum),
+            num sockets (sockets - maximum),
+            gpus (gres - total),
+            node state (node - state),
+            memory (memory - maximum),
+            cpus used (cpu - allocated),
+            cpus idle (cpu - idle),
+            core count (cores - maximum),
+
+        """
         for cluster, sinfo_list in self.sinfo.items():
             for info in sinfo_list['sinfo']:
                 node_name = info['nodes']['nodes'][0]
