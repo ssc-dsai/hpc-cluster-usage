@@ -24,7 +24,6 @@ def job_smi(jobid, cluster=None):
             cluster_arg,
             f'--jobid={jobid}',
             '--overlap',
-            '--gres=gpu:8',
             'bash -c \'echo \"NODENAME=${SLURMD_NODENAME}:${SLURM_PROCID}\" > nvidia-out.$(printf %02d $SLURM_PROCID) && nvidia-smi -q -x >> nvidia-out.$(printf %02d $SLURM_PROCID)\'', 
     ]
     Popen(" ".join(args), shell=True, stdout=PIPE).stdout.read()

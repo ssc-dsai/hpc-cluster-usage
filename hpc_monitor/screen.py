@@ -366,7 +366,7 @@ class Display:
         # https://stackoverflow.com/questions/63366098/rejoin-a-bash-slurm-job
         # Try the 'ssh=True' option in the comments section of the job submission.
         # https://portal.science.gc.ca/xwiki/bin/view/Projects/Science/Tutorials%20and%20HowTos/Quick%20Start%20to%20Using%20Linux%20Clusters%20With%20SLURM/
-        out = job_smi(self.jobid, cluster=self.cluster)
+        out = job_smi(self.jobid, cluster="gpsc7")
 
         #out = new_job_smi_output()
         out_spl = [i for i in out.split("NODENAME=") if i]
