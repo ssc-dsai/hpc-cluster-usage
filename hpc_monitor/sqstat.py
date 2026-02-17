@@ -99,22 +99,17 @@ def sinfof(clusters):
     sinfo_args = ['sinfo', '-M', c, '--Node', '-h',
                   '-o', '%N|%X|%Y|%G|%T|%m|%e|%C']
     sinfo_str = Popen(sinfo_args, stdout=PIPE).stdout.read()
-    return _parse_sinfo_output(sinfo_str.decode('utf-8'), c)
+    return _parse_sinfo_output(sinfo_str.decode('utf-8'))
 
 
-def _parse_sinfo_output(text, clusters_arg=None):
+def _parse_sinfo_output(text):
     """Parse pipe-delimited sinfo output into a dict of cluster -> {'sinfo': [...]}.
 
     Handles multi-cluster output where CLUSTER: header lines separate sections.
     Returns data in a structure compatible with process_info().
     """
     result = {}
-    # When querying a single cluster, Slurm may omit the CLUSTER: header.
-    # Use the clusters_arg as fallback so keys match squeue output.
     current_cluster = None
-    fallback_cluster = None
-    if clusters_arg and ',' not in clusters_arg:
-        fallback_cluster = clusters_arg
 
     for line in text.splitlines():
         line = line.strip()
@@ -160,8 +155,8 @@ def _parse_sinfo_output(text, clusters_arg=None):
         }
 
         if current_cluster is None:
-            # Single-cluster mode; use the cluster name from the -M argument
-            current_cluster = fallback_cluster or '_default'
+            # Single-cluster mode; use a default key
+            current_cluster = '_default'
             result[current_cluster] = {'sinfo': []}
 
         result[current_cluster]['sinfo'].append(node_dict)
@@ -316,14 +311,10 @@ def _parse_sacct_pipe(string, parse_format):
 
 
 def sinfof_local(clusters):
-    if not isinstance(clusters, str):
-        c = ",".join(clusters)
-    else:
-        c = clusters
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sinfo_out.txt")
     with open(filename, 'r') as f:
         txt = f.read().strip()
-    return _parse_sinfo_output(txt, c)
+    return _parse_sinfo_output(txt)
 
 def squeuef_local(clusters):
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "squeue_out.txt")
