@@ -4,7 +4,7 @@
 """
 qstat.py -- Helpers to serialise qstat output.
 
-Reads Slurm output using format strings and parses into python dictionaries.
+Reads SGE output as XML and parses into python dictionaries.
 
 """
 
@@ -16,55 +16,6 @@ import re
 import string
 import pandas as pd
 
-
-def expand_nodelist(nodelist_str):
-    """Expand a Slurm compressed nodelist string into individual node names.
-
-    E.g. "ib12be-[001-003,005]" -> ["ib12be-001", "ib12be-002", "ib12be-003", "ib12be-005"]
-         "ib12gpu-001" -> ["ib12gpu-001"]
-         "ib12be-[012,016],ib12gpu-001" -> ["ib12be-012", "ib12be-016", "ib12gpu-001"]
-    """
-    if not nodelist_str or nodelist_str.strip() == '':
-        return []
-
-    try:
-        result = Popen(['scontrol', 'show', 'hostnames', nodelist_str],
-                       stdout=PIPE, stderr=PIPE)
-        out = result.stdout.read().decode('utf-8').strip()
-        if out:
-            return out.split('\n')
-    except (FileNotFoundError, OSError):
-        pass
-
-    # Fallback: manual expansion
-    return _expand_nodelist_manual(nodelist_str)
-
-
-def _expand_nodelist_manual(nodelist_str):
-    """Manual fallback for expanding compressed nodelists."""
-    nodes = []
-    # Match patterns like prefix[range] or just plain names
-    pattern = re.compile(r'([^\[\],]+)\[([^\]]+)\]|([^\[\],]+)')
-
-    for match in pattern.finditer(nodelist_str):
-        if match.group(3):
-            # Plain node name
-            nodes.append(match.group(3).strip())
-        else:
-            prefix = match.group(1)
-            range_str = match.group(2)
-            for part in range_str.split(','):
-                part = part.strip()
-                if '-' in part:
-                    start, end = part.split('-', 1)
-                    width = len(start)
-                    for i in range(int(start), int(end) + 1):
-                        nodes.append(f"{prefix}{i:0{width}d}")
-                else:
-                    nodes.append(f"{prefix}{part}")
-    return nodes
-
-
 def job_smi(jobid, cluster=None):
     cluster_arg = ''
     if cluster is not None:
@@ -73,7 +24,7 @@ def job_smi(jobid, cluster=None):
             cluster_arg,
             f'--jobid={jobid}',
             '--overlap',
-            'bash -c \'echo \"NODENAME=${SLURMD_NODENAME}:${SLURM_PROCID}\" > nvidia-out.$(printf %02d $SLURM_PROCID) && nvidia-smi -q -x >> nvidia-out.$(printf %02d $SLURM_PROCID)\'',
+            'bash -c \'echo \"NODENAME=${SLURMD_NODENAME}:${SLURM_PROCID}\" > nvidia-out.$(printf %02d $SLURM_PROCID) && nvidia-smi -q -x >> nvidia-out.$(printf %02d $SLURM_PROCID)\'', 
     ]
     Popen(" ".join(args), shell=True, stdout=PIPE).stdout.read()
     # Now that we pipe output to files, need to read them.
@@ -85,186 +36,324 @@ def job_smi(jobid, cluster=None):
         os.remove(filename)
     return out
 
-
 def sinfof(clusters):
-    """Return sinfo output as a dict keyed by cluster, each containing a list of node dicts.
-
-    Uses format-string output instead of --json for dramatically reduced output size.
-    Format: %N|%X|%Y|%G|%T|%m|%e|%C
-    """
     if not isinstance(clusters, str):
         c = ",".join(clusters)
     else:
         c = clusters
-    sinfo_args = ['sinfo', '-M', c, '--Node', '-h',
-                  '-o', '%N|%X|%Y|%G|%T|%m|%e|%C']
+    sinfo_args = ['sinfo', '-M', c, '--Node', '--json']
     sinfo_str = Popen(sinfo_args, stdout=PIPE).stdout.read()
-    return _parse_sinfo_output(sinfo_str.decode('utf-8'))
+    return _read_json_string(sinfo_str.decode('utf-8'))
+    #added_braces = []
+    #for id, line in enumerate(sinfo_str.decode('utf-8').split("\n")):
+    #    nline = line.strip()
+    #    if nline.startswith('CLUSTER'):
+    #        cid = "\""+nline.split(":")[-1].strip()+"\""
+    #        if id != 0:
+    #            #added_braces.append("},".rjust(5))
+    #            added_braces[-1] = added_braces[-1] + ","
+    #            added_braces.append(f"{cid}:")
+    #        else:
+    #            added_braces.append("{")
+    #            added_braces.append(f"{cid}:")
 
+    #    elif (nline):
+    #        added_braces.append(nline)
 
-def _parse_sinfo_output(text):
-    """Parse pipe-delimited sinfo output into a dict of cluster -> {'sinfo': [...]}.
+    #added_braces.append("}")
+    #sinfo_obj = json.loads("\n".join(added_braces))
+    #return sinfo_obj
 
-    Handles multi-cluster output where CLUSTER: header lines separate sections.
-    Returns data in a structure compatible with process_info().
+def squeuet(clusters):
+    """Return squeue output as a dictionary, requesting only the values needed for 
+    downstream tasks. 
+
+    Account
+        Print the account associated with the job. (Valid for jobs only)
+    AccrueTime
+        Print the accrue time associated with the job. (Valid for jobs only)
+    admin_comment
+        Administrator comment associated with the job. (Valid for jobs only)
+    AllocNodes
+        Print the nodes allocated to the job. (Valid for jobs only)
+    AllocSID
+        Print the session ID used to submit the job. (Valid for jobs only)
+    ArrayJobID
+        Prints the job ID of the job array. (Valid for jobs and job steps)
+    ArrayTaskID
+        Prints the task ID of the job array. (Valid for jobs and job steps)
+    AssocID
+        Prints the ID of the job association. (Valid for jobs only)
+    BatchFlag
+        Prints whether the batch flag has been set. (Valid for jobs only)
+    BatchHost
+        Executing (batch) host. For an allocated session, this is the host on which the session is executing (i.e. the node from which the srun or the salloc command was executed). For a batch job, this is the node executing the batch script. In the case of a typical Linux cluster, this would be the compute node zero of the allocation. (Valid for jobs only)
+    BoardsPerNode
+        Prints the number of boards per node allocated to the job. (Valid for jobs only)
+    BurstBuffer
+        Burst Buffer specification (Valid for jobs only)
+    BurstBufferState
+        Burst Buffer state (Valid for jobs only)
+    Cluster
+        Name of the cluster that is running the job or job step.
+    ClusterFeature
+        Cluster features required by the job. (Valid for jobs only)
+    Command
+        The command to be executed. (Valid for jobs only)
+    Comment
+        Comment associated with the job. (Valid for jobs only)
+    Contiguous
+        Are contiguous nodes requested by the job. (Valid for jobs only)
+    Container
+        OCI container bundle path.
+    ContainerID
+        OCI container assigned ID.
+    Cores
+        Number of cores per socket requested by the job. This reports the value of the srun --cores-per-socket option. When --cores-per-socket has not been set, "*" is displayed. (Valid for jobs only)
+    CoreSpec
+        Count of cores reserved on each node for system use (core specialization). (Valid for jobs only)
+    CPUFreq
+        Prints the frequency of the allocated CPUs. (Valid for job steps only)
+    cpus-per-task
+        Prints the number of CPUs per tasks allocated to the job. (Valid for jobs only)
+    cpus-per-tres
+        Print the memory required per trackable resources allocated to the job or job step.
+    CronJob
+        Print Yes/No depending on whether the job has been generated by scrontab or not. (Valid for jobs only)
+    Deadline
+        Prints the deadline affected to the job (Valid for jobs only)
+    DelayBoot
+        Delay boot time. (Valid for jobs only)
+    Dependency
+        Job dependencies remaining. This job will not begin execution until these dependent jobs complete. In the case of a job that can not run due to job dependencies never being satisfied, the full original job dependency specification will be reported. Once a dependency is satisfied, it is removed from the job. A value of NULL implies this job has no dependencies. (Valid for jobs only)
+    DerivedEC
+        The highest exit code returned by the job's job steps (srun invocations). Following the colon is the signal that caused the process to terminate if it was terminated by a signal. (Valid for jobs only)
+    EligibleTime
+        Time the job is eligible for running. (Valid for jobs only)
+    EndTime
+        The time of job termination, actual or expected. (Valid for jobs only)
+    ExcNodes
+        The nodes requested to be excluded when allocating this job. (Valid for jobs only)
+    exit_code
+        The exit code returned by the job, typically as set by the exit() function. Following the colon is the signal that caused the process to terminate if it was terminated by a signal. (Valid for jobs only)
+    Feature
+        Features required by the job. (Valid for jobs only)
+    GroupID
+        Group ID of the job. (Valid for jobs only)
+    GroupName
+        Group name of the job. (Valid for jobs only)
+    HetJobID
+        Job ID of the heterogeneous job leader.
+    HetJobIDSet
+        Expression identifying all components job IDs within a heterogeneous job.
+    HetJobOffset
+        Zero origin offset within a collection of heterogeneous job components.
+    JobArrayID
+        Job array's job ID. This is the base job ID. For non-array jobs, this is the job ID. (Valid for jobs only)
+    JobID
+        Job ID. This will have a unique value for each element of job arrays and each component of heterogeneous jobs. (Valid for jobs only)
+    LastSchedEval
+        Prints the last time the job was evaluated for scheduling. (Valid for jobs only)
+    Licenses
+        Licenses requested by the job. (Valid for jobs only)
+    LicensesAlloc
+        Licenses allocated to the job. (Valid for jobs only)
+    MaxCPUs
+        Prints the max number of CPUs allocated to the job. (Valid for jobs only)
+    MaxNodes
+        Prints the max number of nodes allocated to the job. (Valid for jobs only)
+    MCSLabel
+        Prints the MCS_label of the job. (Valid for jobs only)
+    mem-per-tres
+        Print the memory (in MB) required per trackable resources allocated to the job or job step.
+    MinCpus
+        Minimum number of CPUs (processors) per node requested by the job. This reports the value of the srun --mincpus option with a default value of zero. (Valid for jobs only)
+    MinMemory
+        Minimum size of memory (in MB) requested by the job. (Valid for jobs only)
+    MinTime
+        Minimum time limit of the job (Valid for jobs only)
+    MinTmpDisk
+        Minimum size of temporary disk space (in MB) requested by the job. (Valid for jobs only)
+    Name
+        Job or job step name. (Valid for jobs and job steps)
+    Network
+        The network that the job is running on. (Valid for jobs and job steps)
+    Nice
+        Nice value (adjustment to a job's scheduling priority). (Valid for jobs only)
+    NodeList
+        List of nodes allocated to the job or job step. In the case of a COMPLETING job, the list of nodes will comprise only those nodes that have not yet been returned to service. (Valid for jobs only)
+    Nodes
+        List of nodes allocated to the job or job step. In the case of a COMPLETING job, the list of nodes will comprise only those nodes that have not yet been returned to service. (Valid job steps only)
+    NTPerBoard
+        The number of tasks per board allocated to the job. (Valid for jobs only)
+    NTPerCore
+        The number of tasks per core allocated to the job. (Valid for jobs only)
+    NTPerNode
+        The number of tasks per node allocated to the job. (Valid for jobs only)
+    NTPerSocket
+        The number of tasks per socket allocated to the job. (Valid for jobs only)
+    NumCPUs
+        Number of CPUs (processors) requested by the job or allocated to it if already running. As a job is completing, this number will reflect the current number of CPUs allocated. (Valid for jobs and job steps)
+    NumNodes
+        Number of nodes allocated to the job or the minimum number of nodes required by a pending job. The actual number of nodes allocated to a pending job may exceed this number if the job specified a node range count (e.g. minimum and maximum node counts) or the job specifies a processor count instead of a node count. As a job is completing this number will reflect the current number of nodes allocated. (Valid for jobs only)
+    NumTasks
+        Number of tasks requested by a job or job step. This reports the value of the --ntasks option. (Valid for jobs and job steps)
+    Origin
+        Cluster name where federated job originated from. (Valid for federated jobs only)
+    OriginRaw
+        Cluster ID where federated job originated from. (Valid for federated jobs only)
+    OverSubscribe
+        Can the compute resources allocated to the job be over subscribed by other jobs. The resources to be over subscribed can be nodes, sockets, cores, or hyperthreads depending upon configuration. The value will be "YES" if the job was submitted with the oversubscribe option or the partition is configured with OverSubscribe=Force, "NO" if the job requires exclusive node access, "USER" if the allocated compute nodes are dedicated to a single user, "MCS" if the allocated compute nodes are dedicated to a single security class (See MCSPlugin and MCSParameters configuration parameters for more information), "OK" otherwise (typically allocated dedicated CPUs), (Valid for jobs only)
+    Partition
+        Partition of the job or job step. (Valid for jobs and job steps)
+    PendingTime
+        The time (in seconds) between start time and submit time of the job. If the job has not started yet, then the time (in seconds) between now and the submit time of the job. (Valid for jobs only)
+    PreemptTime
+        The preempt time for the job. (Valid for jobs only)
+    Prefer
+        The preferred features of a pending job. (Valid for jobs only)
+    Priority
+        Priority of the job (converted to a floating point number between 0.0 and 1.0). Also see prioritylong. (Valid for jobs only)
+    PriorityLong
+        Priority of the job (generally a very large unsigned integer). Also see priority. (Valid for jobs only)
+    Profile
+        Profile of the job. (Valid for jobs only)
+    QOS
+        Quality of service associated with the job. (Valid for jobs only)
+    Reason
+        The reason a job is in its current state. See the JOB REASON CODES section below for more information. (Valid for jobs only)
+    ReasonList
+        For pending jobs: the reason a job is waiting for execution is printed within parenthesis. For terminated jobs with failure: an explanation as to why the job failed is printed within parenthesis. For all other job states: the list of allocate nodes. See the JOB REASON CODES section below for more information. (Valid for jobs only)
+    Reboot
+        Indicates if the allocated nodes should be rebooted before starting the job. (Valid on jobs only)
+    ReqNodes
+        List of node names explicitly requested by the job. (Valid for jobs only)
+    ReqSwitch
+        The max number of requested switches by for the job. (Valid for jobs only)
+    Requeue
+        Prints whether the job will be requeued on failure. (Valid for jobs only)
+    Reservation
+        Reservation for the job. (Valid for jobs only)
+    ResizeTime
+        The amount of time changed for the job to run. (Valid for jobs only)
+    RestartCnt
+        The number of restarts for the job. (Valid for jobs only)
+    ResvPort
+        Reserved ports of the job. (Valid for job steps only)
+    SchedNodes
+        For pending jobs, a list of the nodes expected to be used when the job is started. (Valid for jobs only)
+    SCT
+        Number of requested sockets, cores, and threads (S:C:T) per node for the job. When (S:C:T) has not been set, "*" is displayed. (Valid for jobs only)
+    SegmentSize
+        Segment size requested by the job. (Valid for jobs only)
+    SiblingsActive
+        Cluster names of where federated sibling jobs exist. (Valid for federated jobs only)
+    SiblingsActiveRaw
+        Cluster IDs of where federated sibling jobs exist. (Valid for federated jobs only)
+    SiblingsViable
+        Cluster names of where federated sibling jobs are viable to run. (Valid for federated jobs only)
+    SiblingsViableRaw
+        Cluster IDs of where federated sibling jobs viable to run. (Valid for federated jobs only)
+    Sockets
+        Number of sockets per node requested by the job. This reports the value of the srun --sockets-per-node option. When --sockets-per-node has not been set, "*" is displayed. (Valid for jobs only)
+    SPerBoard
+        Number of sockets per board allocated to the job. (Valid for jobs only)
+    StartTime
+        Actual or expected start time of the job or job step. (Valid for jobs and job steps)
+    State
+        Job state in extended form. See the JOB STATE CODES section below for a list of possible states. (Valid for jobs only)
+    StateCompact
+        Job state in compact form. See the JOB STATE CODES section below for a list of possible states. (Valid for jobs only)
+    STDERR
+        The directory for standard error to output to. (Valid for jobs and steps)
+    STDIN
+        The directory for standard in. (Valid for jobs and steps)
+    STDOUT
+        The directory for standard out to output to. (Valid for jobs and steps)
+    StepID
+        Job or job step ID. In the case of job arrays, the job ID format will be of the form "<base_job_id>_<index>". (Valid for job steps only)
+    StepName
+        Job step name. (Valid for job steps only)
+    StepState
+        The state of the job step. (Valid for job steps only)
+    SubmitTime
+        The time that the job was submitted at. (Valid for jobs only)
+    system_comment
+        System comment associated with the job. (Valid for jobs only)
+    Threads
+        Number of threads per core requested by the job. This reports the value of the srun --threads-per-core option. When --threads-per-core has not been set, "*" is displayed. (Valid for jobs only)
+    TimeLeft
+        Time left for the job to execute in days-hours:minutes:seconds. This value is calculated by subtracting the job's time used from its time limit. The value may be "NOT_SET" if not yet established or "UNLIMITED" for no limit. (Valid for jobs only)
+    TimeLimit
+        Timelimit for the job or job step. (Valid for jobs and job steps)
+    TimeUsed
+        Time used by the job or job step in days-hours:minutes:seconds. The days and hours are printed only as needed. For job steps this field shows the elapsed time since execution began and thus will be inaccurate for job steps which have been suspended. Clock skew between nodes in the cluster will cause the time to be inaccurate. If the time is obviously wrong (e.g. negative), it displays as "INVALID". (Valid for jobs and job steps)
+    tres-alloc
+        Print the trackable resources allocated to the job if running. If not running, then print the trackable resources requested by the job.
+    tres-bind
+        Print the trackable resources task binding requested by the job or job step.
+    tres-freq
+        Print the trackable resources frequencies requested by the job or job step.
+    tres-per-job
+        Print the trackable resources requested by the job.
+    tres-per-node
+        Print the trackable resources per node requested by the job or job step.
+    tres-per-socket
+        Print the trackable resources per socket requested by the job or job step.
+    tres-per-step
+        Print the trackable resources requested by the job step.
+    tres-per-task
+        Print the trackable resources per task requested by the job or job step.
+    UserID
+        User ID for a job or job step. (Valid for jobs and job steps)
+    UserName
+        User name for a job or job step. (Valid for jobs and job steps)
+    Wait4Switch
+        The amount of time to wait for the desired number of switches. (Valid for jobs only)
+    WCKey
+        Workload Characterization Key (wckey). (Valid for jobs only)
+    WorkDir
+        The job's working directory. (Valid for jobs only)
     """
-    result = {}
-    current_cluster = None
-
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith('CLUSTER:'):
-            current_cluster = line[8:].strip()
-            if current_cluster not in result:
-                result[current_cluster] = {'sinfo': []}
-            continue
-
-        parts = line.split('|')
-        if len(parts) < 8:
-            continue
-
-        node_name = parts[0].strip()
-        sockets = int(parts[1].strip())
-        cores_per_socket = int(parts[2].strip())
-        gres_string = parts[3].strip()
-        state_str = parts[4].strip()
-        memory_total = int(parts[5].strip())
-        memory_free = int(parts[6].strip())
-        # %C returns "allocated/idle/other/total"
-        cpus_parts = parts[7].strip().split('/')
-        cpus_allocated = int(cpus_parts[0])
-        cpus_idle = int(cpus_parts[1])
-
-        memory_allocated = memory_total - memory_free
-
-        # Parse state into a list (e.g. "idle" -> ["IDLE"], "down*+drain" -> ["DOWN", "DRAIN", "NOT_RESPONDING"])
-        node_states = _parse_node_state(state_str)
-
-        node_dict = {
-            'node_name': node_name,
-            'sockets': sockets,
-            'cores_per_socket': cores_per_socket,
-            'gres_total': gres_string if gres_string != '(null)' else '',
-            'node_states': node_states,
-            'memory_total': memory_total,
-            'memory_allocated': memory_allocated,
-            'cpus_allocated': cpus_allocated,
-            'cpus_idle': cpus_idle,
-        }
-
-        if current_cluster is None:
-            # Single-cluster mode; use a default key
-            current_cluster = '_default'
-            result[current_cluster] = {'sinfo': []}
-
-        result[current_cluster]['sinfo'].append(node_dict)
-
-    return result
-
-
-def _parse_node_state(state_str):
-    """Convert sinfo long state string to a list of state tokens matching JSON format.
-
-    Examples:
-        "idle" -> ["IDLE"]
-        "mixed" -> ["MIXED"]
-        "down*" -> ["DOWN", "NOT_RESPONDING"]
-        "idle+drain" -> ["IDLE", "DRAIN"]
-        "down*+drain" -> ["DOWN", "DRAIN", "NOT_RESPONDING"]
-    """
-    states = []
-    # The * suffix means NOT_RESPONDING
-    not_responding = '*' in state_str
-    state_str = state_str.replace('*', '').replace('~', '').replace('#', '').replace('$', '').replace('@', '').replace('^', '')
-
-    for part in state_str.split('+'):
-        states.append(part.strip().upper())
-
-    if not_responding:
-        states.append('NOT_RESPONDING')
-
-    return states
-
+    pass
 
 def squeuef(clusters):
-    """Return squeue output as a dict keyed by cluster, each containing a list of job dicts.
+    """Return squeue output as a dictionary"""
 
-    Uses format-string output instead of --json for dramatically reduced output size.
-    Format: %u|%g|%T|%M|%N|%C|%D|%b|%i|%tres-alloc|%tres-per-node
-    """
     if not isinstance(clusters, str):
         c = ",".join(clusters)
     else:
         c = clusters
-    squeue_args = ['squeue', '-M', c, '-h',
-                   '-o', '%u|%g|%T|%M|%N|%C|%D|%b|%i|%tres-alloc|%tres-per-node']
+    squeue_args = ['squeue', '-M', c, '--json']
     squeue_str = Popen(squeue_args, stdout=PIPE).stdout.read()
-    return _parse_squeue_output(squeue_str.decode('utf-8'))
+    return _read_json_string(squeue_str.decode('utf-8'))
 
+    # have to insert curly braces at the outer level (CLUSTER)
+    #added_braces = []
+    #for id, line in enumerate(squeue_str.decode('utf-8').split("\n")):
+    #    nline = line.strip()
+    #    if nline.startswith('CLUSTER'):
+    #        cid = "\""+nline.split(":")[-1].strip()+"\""
+    #        if id != 0:
+    #            #added_braces.append("},".rjust(5))
+    #            added_braces[-1] = added_braces[-1] + ","
+    #            added_braces.append(f"{cid}:")
+    #        else:
+    #            added_braces.append("{")
+    #            added_braces.append(f"{cid}:")
 
-def _parse_squeue_output(text):
-    """Parse pipe-delimited squeue output into a dict of cluster -> {'jobs': [...]}.
+    #    elif (nline):
+    #        added_braces.append(nline)
 
-    Returns data in a structure compatible with process_jobs().
-    """
-    result = {}
-    current_cluster = None
-
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith('CLUSTER:'):
-            current_cluster = line[8:].strip()
-            if current_cluster not in result:
-                result[current_cluster] = {'jobs': []}
-            continue
-
-        parts = line.split('|')
-        if len(parts) < 11:
-            continue
-
-        user_name = parts[0].strip()
-        group_name = parts[1].strip()
-        job_state = parts[2].strip()
-        cluster = parts[3].strip()
-        node_list = parts[4].strip()
-        num_cpus = int(parts[5].strip()) if parts[5].strip().isdigit() else 0
-        num_nodes = int(parts[6].strip()) if parts[6].strip().isdigit() else 0
-        gres = parts[7].strip()
-        job_id = parts[8].strip()
-        tres_alloc = parts[9].strip()
-        tres_per_node = parts[10].strip()
-
-        # Use cluster from %M field if available, else from CLUSTER: header
-        if cluster and cluster != '(null)':
-            effective_cluster = cluster
-        else:
-            effective_cluster = current_cluster or '_default'
-
-        if effective_cluster not in result:
-            result[effective_cluster] = {'jobs': []}
-
-        job_dict = {
-            'user_name': user_name,
-            'group_name': group_name,
-            'job_state': job_state,
-            'cluster': effective_cluster,
-            'node_list': node_list if node_list != '(null)' else '',
-            'num_cpus': num_cpus,
-            'num_nodes': num_nodes,
-            'gres': gres if gres != '(null)' else '',
-            'job_id': job_id,
-            'tres_alloc_str': tres_alloc if tres_alloc != '(null)' else '',
-            'tres_per_node': tres_per_node if tres_per_node != '(null)' else '',
-        }
-
-        result[effective_cluster]['jobs'].append(job_dict)
-
-    return result
-
+    #added_braces.append("}")
+    #squeue_obj = json.loads("\n".join(added_braces))
+    # node
+    #   --- slots_total
+    #   --- state
+    # job_list
+    #   --- slots
+    #   --- JB_owner
+    #return squeue_obj
 
 def sacctf(clusters, start_time, end_time, partition=""):
     """Return sacct output as a dictionary"""
@@ -294,9 +383,11 @@ def sacctf(clusters, start_time, end_time, partition=""):
     sacct_args = ['sacct', '--allusers', '-M', c, '-S', start_time, '-E', end_time, '-o', format_string] # '--json']
     if partition:
         sacct_args += ["--partition", partition]
+    #print(" ".join(sacct_args))
     sacct_str = Popen(sacct_args, stdout=PIPE).stdout.read()
+    #print(sacct_str.decode('utf-8'))
     sacct_obj = _parse_sacct_pipe(sacct_str.decode('utf-8'), parse_format)
-    return pd.DataFrame(sacct_obj)
+    return pd.DataFrame(sacct_obj) 
 
 def _parse_sacct_pipe(string, parse_format):
     data_lines = []
@@ -309,19 +400,62 @@ def _parse_sacct_pipe(string, parse_format):
         data_lines.append(line_dict)
     return data_lines
 
+def _read_json_string(txt):
+    """Optimized JSON string parser for Slurm output."""
+    # Try to parse as single JSON first (faster path)
+    try:
+        return json.loads(txt)
+    except json.decoder.JSONDecodeError:
+        pass
+    
+    # Fallback to multi-cluster parsing with optimized approach
+    return_dict = {}
+    lines = txt.split('\n')
+    current_cluster = None
+    current_content = []
+    
+    for line in lines:
+        line = line.strip()
+        if line.startswith('CLUSTER:'):
+            # Process previous cluster if exists
+            if current_cluster and current_content:
+                try:
+                    json_content = '\n'.join(current_content)
+                    json_dict = json.loads(json_content)
+                    return_dict[current_cluster] = json_dict
+                except json.decoder.JSONDecodeError:
+                    pass
+            
+            # Start new cluster
+            current_cluster = line[8:].strip()  # Remove 'CLUSTER:' prefix
+            current_content = []
+        elif line and current_cluster:
+            current_content.append(line)
+    
+    # Process final cluster
+    if current_cluster and current_content:
+        try:
+            json_content = '\n'.join(current_content)
+            json_dict = json.loads(json_content)
+            return_dict[current_cluster] = json_dict
+        except json.decoder.JSONDecodeError:
+            pass
+    
+    return return_dict
+
 
 def sinfof_local(clusters):
-    filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sinfo_out.txt")
+    filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "sinfo_out.json")
     with open(filename, 'r') as f:
         txt = f.read().strip()
-    return _parse_sinfo_output(txt)
+    return _read_json_string(txt)
 
 def squeuef_local(clusters):
-    filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "squeue_out.txt")
+    filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "squeue_out.json")
     with open(filename, 'r') as f:
         txt = f.read().strip()
-    return _parse_squeue_output(txt)
-
+    return _read_json_string(txt)
+    
 def sacctf_local(clusters):
     parse_format = OrderedDict({
                     "CPUTime": 30,

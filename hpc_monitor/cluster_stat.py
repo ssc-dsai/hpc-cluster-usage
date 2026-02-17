@@ -15,7 +15,7 @@ import getpass
 import subprocess
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from .sqstat import sinfof, squeuef, sacctf, sinfof_local, squeuef_local, sacctf_local, job_smi, expand_nodelist
+from .sqstat import sinfof, squeuef, sacctf, sinfof_local, squeuef_local, sacctf_local, job_smi
 from .screen import Display
 
 def cache_result(ttl_seconds=30):
@@ -120,51 +120,44 @@ class ClusterStat:
 
     def process_jobs(self):
         """Process jobs from squeue output with optimized data structure operations.
-
+        
         Possible job states are:
-                    (BOOT_FAIL,
-                     CANCELLED,
-                     COMPLETED,
-                     DEADLINE,
+                    (BOOT_FAIL, 
+                     CANCELLED, 
+                     COMPLETED, 
+                     DEADLINE, 
                      FAILED,
-                     NODE_FAIL,
-                     OUT_OF_MEMORY,
-                     PENDING,
-                     PREEMPTED,
+                     NODE_FAIL, 
+                     OUT_OF_MEMORY, 
+                     PENDING, 
+                     PREEMPTED, 
                      RUNNING
-                     SUSPENDED,
+                     SUSPENDED, 
                      TIMEOUT,
         )
         """
+        # Pre-allocate data structures to avoid repeated setdefault calls
         for cluster in self.squeue.keys():
             cluster_users = self.users.setdefault(cluster, OrderedDict())
-
+            
             for job in self.squeue[cluster]['jobs']:
                 user = job['user_name']
                 user_data = cluster_users.setdefault(user, OrderedDict())
-
+                
+                # Cache group_name and branch to avoid repeated string operations
                 group_name = job['group_name']
                 if 'group' not in user_data:
                     user_data['group'] = group_name
+                    # below branch stuff is very HPCO specific.
                     user_data['branch'] = group_name.split("_")[0].upper()
-
-                job_state = job['job_state']
-                # tres_alloc_str is populated for running jobs; use it directly
-                tres_str = job['tres_alloc_str'] if job_state == "RUNNING" and job['tres_alloc_str'] else ''
-                if not tres_str:
-                    # For pending jobs, build a synthetic TRES string from available fields
-                    tres_str = f"cpu={job['num_cpus']},node={job['num_nodes']}"
-                    # Try to extract GPU count from gres field
-                    gpu_count = 0
-                    if job.get('gres'):
-                        gpu_match = re.search(r':(\d+)', job['gres'])
-                        if gpu_match:
-                            gpu_count = int(gpu_match.group(1))
-                    if gpu_count:
-                        tres_str += f",gres/gpu={gpu_count}"
-
-                alloc = self.parse_alloc_string(tres_str)
-
+                
+                job_state = job['job_state'][0]
+                # Parse allocation string (now cached)
+                if job_state == "RUNNING":
+                    alloc = self.parse_alloc_string(job['tres_alloc_str'])
+                else:
+                    alloc = self.parse_alloc_string(job['tres_req_str'])
+                
                 if job_state == "RUNNING":
                     running_jobs = user_data.setdefault("RUNNING", [])
                     running_jobs.append(alloc)
@@ -176,95 +169,84 @@ class ClusterStat:
                     print(f"{job_state} not considered yet!")
 
     def process_gpu_usage(self, node_name, gpus_string, n_nodes, cluster, user):
-        """GPU usage parser. Handles both IDX-style strings and count-only gres strings.
-
-        IDX-style: "gpu:tesla_v100-sxm2-16gb:1(IDX:0)"
-        Count-only: "gpu:tesla_v100-sxm2-16gb:2"
-        """
-        # Try IDX-style first: "name:count(IDX:...)"
+        """Optimized GPU usage parser with single regex pass."""
+        # Single regex to extract all components at once
         pattern = r'([^:]+):(\d+)\(([^)]+)\)'
         match = re.search(pattern, gpus_string)
-
+        
         if match:
             gpu_name = match.group(1)
             n_gpus = int(match.group(2))
             gpu_idx_str = match.group(3)
-
-            gpu_range = []
-            for i in gpu_idx_str.split(','):
-                i = i.lstrip("IDX:")
-                if '-' in i:
-                    start, end = map(int, i.split('-'))
-                    gpu_range.extend(range(start, end + 1))
-                else:
-                    gpu_range.append(int(i))
         else:
-            # Count-only: "gpu:name:count" — allocate sequential indices
-            parts = gpus_string.split(':')
-            if len(parts) >= 3:
-                gpu_name = parts[1]
-                n_gpus = int(parts[2])
-            elif len(parts) == 2:
-                gpu_name = parts[0]
-                n_gpus = int(parts[1])
+            # Fallback to original method if regex fails
+            name_qty = re.sub(r'\([^)]*\)', '', gpus_string)
+            gpu_name = name_qty.split(":")[1]
+            n_gpus = int(name_qty.split(":")[-1])
+            gpu_idx_str = re.search(r'\((.*?)\)', gpus_string).group(1).split(":")[-1]
+        
+        # Parse GPU indices more efficiently
+        gpu_range = []
+        for i in gpu_idx_str.split(','):
+            i = i.lstrip("IDX:")
+            if '-' in i:
+                start, end = map(int, i.split('-'))
+                gpu_range.extend(range(start, end + 1))
             else:
-                return
+                gpu_range.append(int(i))
 
-            if node_name not in self.resource_gpu.get(cluster, {}):
-                return
-            # Find first available GPU indices for this node
-            for gname in self.resource_gpu[cluster][node_name]:
-                if gname == gpu_name or gpu_name in gname or gname in gpu_name:
-                    gpu_name = gname
-                    break
-            gpu_arr = self.resource_gpu[cluster][node_name].get(gpu_name)
-            if gpu_arr is None:
-                return
-            available = np.where(gpu_arr == 0)[0][:n_gpus]
-            gpu_range = list(available)
-
+        # Determine if single or parallel job
         is_single = (len(gpu_range) == 1) and (n_nodes <= 1)
         user_prefix = "S" if is_single else "P"
-
+        
+        # Update resource tracking
         self.resource_gpu[cluster][node_name][gpu_name][gpu_range] += 1
         self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"{user_prefix}{user}"
+    
+    def process_cpu_usage(self, r_node, n_nodes, cluster, user):
+        r_node_name = r_node['name']
+        cores_array = self.resource_list[cluster][r_node_name]
+        desc_array = self.resource_desc[cluster][r_node_name]
+        offset = 0
+        cpu_usage = 0
+        usage_idx = []
 
-    def process_cpu_usage(self, node_name, cpus_on_node, n_nodes, cluster, user):
-        """Sequential core fill: assign the next available core indices for this job."""
-        if node_name not in self.resource_list.get(cluster, {}):
-            return
-        cores_array = self.resource_list[cluster][node_name]
-        desc_array = self.resource_desc[cluster][node_name]
-
-        available = np.where(cores_array == 0)[0][:cpus_on_node]
-        cores_array[available] += 1
-
-        if (cpus_on_node <= 1) and (n_nodes <= 1):
-            desc_array[available] = f"S{user}"
+        for socket in r_node['sockets']:
+            for core in socket['cores']:
+                if core['status'][0] == "ALLOCATED":
+                    cores_array[offset] += 1
+                    cpu_usage += 1
+                    usage_idx.append(offset)
+                offset += 1
+        if (cpu_usage <= 1) and (n_nodes <= 1):
+            # need user data as well!
+            desc_array[usage_idx] = f"S{user}" #f"{self.usercodes[user]}+\033[0m"
         else:
-            desc_array[available] = f"P{user}"
+            desc_array[usage_idx] = f"P{user}" #f"{self.usercodes[user]}=\033[0m"
 
     def process_info(self):
-        """ Node name,
-            cores per socket,
-            num sockets,
-            gpus (gres total),
-            node state,
-            memory total,
-            cpus used,
-            cpus idle,
-            core count,
+        """ Node name, 
+            cores per socket (cores - maximum),
+            num sockets (sockets - maximum),
+            gpus (gres - total),
+            node state (node - state),
+            memory (memory - maximum),
+            cpus used (cpu - allocated),
+            cpus idle (cpu - idle),
+            core count (cores - maximum),
+
         """
         for cluster, sinfo_list in self.sinfo.items():
             for info in sinfo_list['sinfo']:
-                node_name = info['node_name']
-                cores_per_socket = info['cores_per_socket']
-                n_sockets = info['sockets']
+                node_name = info['nodes']['nodes'][0]
+                # state info['node']['state'] = ["DOWN", "DRAIN", "NOT_RESPONDING"]
+                cores_per_socket = info['cores']['maximum']
+                n_sockets = info['sockets']['maximum']
                 n_cpus = int(cores_per_socket) * int(n_sockets)
-                gpus_string = info['gres_total']
+                gpus_string = info['gres']['total']
                 gpu_name = None
                 gpu_count = 0
-                node_states = info['node_states']
+                node_states = info['node']['state']
                 down_node = False
                 if ("DOWN" in node_states) or ("DRAIN" in node_states) or ("NOT_RESPONDING" in node_states):
                     down_node = True
@@ -290,15 +272,15 @@ class ClusterStat:
                 if down_node:
                     self.resource_list[cluster][node_name].fill(-1)
                     self.resource_desc[cluster][node_name].fill(-1)
-
+            
                 self.node_data.setdefault(cluster, OrderedDict())
                 self.node_data[cluster][node_name] = {
-                        'memory': info['memory_total'],
-                        'memory_used': info['memory_allocated'],
+                        'memory': info['memory']['maximum'],
+                        'memory_used': info['memory']['allocated'],
                         'cpu_count': n_cpus,
-                        'cpu_used': info['cpus_allocated'],
-                        'cpu_idle': info['cpus_idle'],
-                        'core_count': cores_per_socket,
+                        'cpu_used': info['cpus']['allocated'],
+                        'cpu_idle': info['cpus']['idle'],
+                        'core_count': info['cores']['maximum'],
                         'gpu_name': gpu_name,
                         'gpu_count': gpu_count,
                 }
@@ -306,33 +288,13 @@ class ClusterStat:
     def process_running_job(self, job):
         user = job['user_name']
         cluster = job['cluster']
-        node_list_str = job.get('node_list', '')
-        if not node_list_str:
-            return
+        resources = job['job_resources']['nodes']
+        node_names = [r_node['name'] for r_node in resources['allocation']]
+        for r_node in resources['allocation']:
+            self.process_cpu_usage(r_node, len(resources['allocation']), cluster, user)
 
-        node_names = expand_nodelist(node_list_str)
-        if not node_names:
-            return
-
-        num_cpus = job['num_cpus']
-        n_nodes = len(node_names)
-
-        # Distribute CPUs across nodes (approximate even distribution)
-        base_cpus = num_cpus // n_nodes if n_nodes > 0 else num_cpus
-        remainder = num_cpus % n_nodes if n_nodes > 0 else 0
-
-        for idx, node_name in enumerate(node_names):
-            cpus_on_node = base_cpus + (1 if idx < remainder else 0)
-            self.process_cpu_usage(node_name, cpus_on_node, n_nodes, cluster, user)
-
-        # GPU allocation from gres field
-        gres = job.get('gres', '')
-        if gres:
-            # gres can be like "gpu:tesla_v100-sxm2-16gb:1(IDX:0)" or "gpu:a100:2"
-            # For multi-node, distribute GPU allocation across nodes
-            for node_name in node_names:
-                if node_name in self.resource_gpu.get(cluster, {}):
-                    self.process_gpu_usage(node_name, gres, n_nodes, cluster, user)
+        for gpuid, gpus_string in enumerate(job['gres_detail']):
+            self.process_gpu_usage(node_names[gpuid], gpus_string, len(job['gres_detail']), cluster, user)
 
     def gpu_report(self):
         """Prepare a usage report on GPUs.
