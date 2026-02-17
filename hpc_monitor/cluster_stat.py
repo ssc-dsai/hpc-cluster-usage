@@ -181,20 +181,46 @@ class ClusterStat:
                 else:
                     print(f"{job_state} not considered yet!")
 
-    def process_gpu_usage(self, node_name, gpus_string, n_nodes, cluster, user):
-        """GPU usage parser. Handles both IDX-style strings and count-only gres strings.
+    def _resolve_gpu_name(self, node_name, cluster, hint_name=None):
+        """Resolve a GPU name hint to the actual GPU type registered for this node.
 
-        IDX-style: "gpu:tesla_v100-sxm2-16gb:1(IDX:0)"
-        Count-only: "gpu:tesla_v100-sxm2-16gb:2"
+        Falls back to the first (usually only) GPU type on the node if the
+        hint doesn't match. Returns (gpu_name, gpu_array) or (None, None).
         """
-        # Try IDX-style first: "name:count(IDX:...)"
-        pattern = r'([^:]+):(\d+)\(([^)]+)\)'
-        match = re.search(pattern, gpus_string)
+        node_gpus = self.resource_gpu.get(cluster, {}).get(node_name, {})
+        if not node_gpus:
+            return None, None
 
-        if match:
-            gpu_name = match.group(1)
-            n_gpus = int(match.group(2))
-            gpu_idx_str = match.group(3)
+        # Try exact or substring match first
+        if hint_name:
+            for gname, garr in node_gpus.items():
+                if gname == hint_name or hint_name in gname or gname in hint_name:
+                    return gname, garr
+
+        # Fallback: use the first (usually only) GPU type on this node
+        gname = next(iter(node_gpus))
+        return gname, node_gpus[gname]
+
+    def process_gpu_usage(self, node_name, gpus_string, n_nodes, cluster, user):
+        """GPU usage parser. Handles various gres string formats from squeue %b:
+
+        With IDX:    "gpu:tesla_v100-sxm2-16gb:1(IDX:0)"
+        With name:   "gpu:tesla_v100-sxm2-16gb:2"
+        Count only:  "gpu:2"
+        """
+        if node_name not in self.resource_gpu.get(cluster, {}):
+            return
+
+        gpu_range = None
+        hint_name = None
+        n_gpus = 0
+
+        # Try IDX-style first: "name:count(IDX:...)"
+        idx_match = re.search(r'([^:]+):(\d+)\(([^)]+)\)', gpus_string)
+        if idx_match:
+            hint_name = idx_match.group(1)
+            n_gpus = int(idx_match.group(2))
+            gpu_idx_str = idx_match.group(3)
 
             gpu_range = []
             for i in gpu_idx_str.split(','):
@@ -205,34 +231,39 @@ class ClusterStat:
                 else:
                     gpu_range.append(int(i))
         else:
-            # Count-only: "gpu:name:count" — allocate sequential indices
+            # No IDX info — extract name hint and count
+            # Formats: "gpu:model_name:N", "gpu:N", "model_name:N"
             parts = gpus_string.split(':')
-            if len(parts) >= 3:
-                gpu_name = parts[1]
-                n_gpus = int(parts[2])
-            elif len(parts) == 2:
-                gpu_name = parts[0]
-                n_gpus = int(parts[1])
-            else:
+            # Find the last numeric part as the count
+            for i in range(len(parts) - 1, -1, -1):
+                stripped = parts[i].strip()
+                if stripped.isdigit():
+                    n_gpus = int(stripped)
+                    # Everything between the first part and the count is the name hint
+                    name_parts = [p.strip() for p in parts[1:i] if p.strip() and p.strip().lower() != 'gpu']
+                    if name_parts:
+                        hint_name = ':'.join(name_parts)
+                    break
+
+            if n_gpus == 0:
                 return
 
-            if node_name not in self.resource_gpu.get(cluster, {}):
-                return
-            # Find first available GPU indices for this node
-            for gname in self.resource_gpu[cluster][node_name]:
-                if gname == gpu_name or gpu_name in gname or gname in gpu_name:
-                    gpu_name = gname
-                    break
-            gpu_arr = self.resource_gpu[cluster][node_name].get(gpu_name)
-            if gpu_arr is None:
-                return
+        gpu_name, gpu_arr = self._resolve_gpu_name(node_name, cluster, hint_name)
+        if gpu_arr is None:
+            return
+
+        # If we don't have explicit indices, allocate sequentially
+        if gpu_range is None:
             available = np.where(gpu_arr == 0)[0][:n_gpus]
             gpu_range = list(available)
+
+        if not gpu_range:
+            return
 
         is_single = (len(gpu_range) == 1) and (n_nodes <= 1)
         user_prefix = "S" if is_single else "P"
 
-        self.resource_gpu[cluster][node_name][gpu_name][gpu_range] += 1
+        gpu_arr[gpu_range] += 1
         self.resource_gpu_desc[cluster][node_name][gpu_name][gpu_range] = f"{user_prefix}{user}"
 
     def process_cpu_usage(self, node_name, cpus_on_node, n_nodes, cluster, user):
