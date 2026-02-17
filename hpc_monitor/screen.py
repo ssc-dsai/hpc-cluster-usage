@@ -211,6 +211,8 @@ class Display:
    
     def user_data_to_screen(self, cluster, row, column):
         self.row = row
+        if cluster not in self.cluster_stat.users or not self.cluster_stat.users[cluster]:
+            return
         max_user_length = max(len(x) for x in self.cluster_stat.users[cluster]) + 2
 
         max_branch_length = max(len(val['branch']) for x,val in self.cluster_stat.users[cluster].items()) + 2
