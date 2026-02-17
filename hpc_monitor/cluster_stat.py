@@ -154,22 +154,21 @@ class ClusterStat:
                     user_data['branch'] = group_name.split("_")[0].upper()
 
                 job_state = job['job_state']
-                # Build alloc directly from the parsed fields (num_cpus, num_nodes, gres)
-                # rather than relying on tres_alloc_str which may not be available
-                # with squeue -o format.
-                gpu_count = 0
-                gres = job.get('gres', '')
-                if gres:
-                    # gres is like "gpu:tesla_v100-sxm2-16gb:2(IDX:0-1)" or "gpu:a100:4"
-                    gpu_match = re.search(r':(\d+)(?:\(|$)', gres)
-                    if gpu_match:
-                        gpu_count = int(gpu_match.group(1))
-                alloc = {
-                    'cpus': job['num_cpus'],
-                    'gpus': gpu_count,
-                    'mem': 0,
-                    'nodes': job['num_nodes'],
-                }
+                # tres_alloc_str is populated for running jobs; use it directly
+                tres_str = job['tres_alloc_str'] if job_state == "RUNNING" and job['tres_alloc_str'] else ''
+                if not tres_str:
+                    # For pending jobs, build a synthetic TRES string from available fields
+                    tres_str = f"cpu={job['num_cpus']},node={job['num_nodes']}"
+                    # Try to extract GPU count from gres field
+                    gpu_count = 0
+                    if job.get('gres'):
+                        gpu_match = re.search(r':(\d+)', job['gres'])
+                        if gpu_match:
+                            gpu_count = int(gpu_match.group(1))
+                    if gpu_count:
+                        tres_str += f",gres/gpu={gpu_count}"
+
+                alloc = self.parse_alloc_string(tres_str)
 
                 if job_state == "RUNNING":
                     running_jobs = user_data.setdefault("RUNNING", [])

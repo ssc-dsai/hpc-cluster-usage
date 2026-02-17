@@ -197,15 +197,16 @@ def squeuef(clusters):
     """Return squeue output as a dict keyed by cluster, each containing a list of job dicts.
 
     Uses format-string output instead of --json for dramatically reduced output size.
-    Cluster identity comes from CLUSTER: header lines (printed by -M flag).
-    Format: %u|%g|%T|%N|%C|%D|%b|%i
+    Cluster identity comes from CLUSTER: header lines (printed by -M flag),
+    NOT from a format field (%M is TimeUsed, not Cluster).
+    Format: %u|%g|%T|%N|%C|%D|%b|%i|%tres-alloc|%tres-per-node
     """
     if not isinstance(clusters, str):
         c = ",".join(clusters)
     else:
         c = clusters
     squeue_args = ['squeue', '-M', c, '-h',
-                   '-o', '%u|%g|%T|%N|%C|%D|%b|%i']
+                   '-o', '%u|%g|%T|%N|%C|%D|%b|%i|%tres-alloc|%tres-per-node']
     squeue_str = Popen(squeue_args, stdout=PIPE).stdout.read()
     return _parse_squeue_output(squeue_str.decode('utf-8'), c)
 
@@ -233,7 +234,7 @@ def _parse_squeue_output(text, clusters_arg=None):
             continue
 
         parts = line.split('|')
-        if len(parts) < 8:
+        if len(parts) < 10:
             continue
 
         user_name = parts[0].strip()
@@ -244,6 +245,8 @@ def _parse_squeue_output(text, clusters_arg=None):
         num_nodes = int(parts[5].strip()) if parts[5].strip().isdigit() else 0
         gres = parts[6].strip()
         job_id = parts[7].strip()
+        tres_alloc = parts[8].strip()
+        tres_per_node = parts[9].strip()
 
         effective_cluster = current_cluster or fallback_cluster or '_default'
 
@@ -260,6 +263,8 @@ def _parse_squeue_output(text, clusters_arg=None):
             'num_nodes': num_nodes,
             'gres': gres if gres != '(null)' else '',
             'job_id': job_id,
+            'tres_alloc_str': tres_alloc if tres_alloc != '(null)' else '',
+            'tres_per_node': tres_per_node if tres_per_node != '(null)' else '',
         }
 
         result[effective_cluster]['jobs'].append(job_dict)
