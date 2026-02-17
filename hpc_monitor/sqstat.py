@@ -197,31 +197,25 @@ def squeuef(clusters):
     """Return squeue output as a dict keyed by cluster, each containing a list of job dicts.
 
     Uses format-string output instead of --json for dramatically reduced output size.
-    Cluster identity comes from CLUSTER: header lines (printed by -M flag),
-    NOT from a format field (%M is TimeUsed, not Cluster).
-    Format: %u|%g|%T|%N|%C|%D|%b|%i|%tres-alloc|%tres-per-node
+    Format: %u|%g|%T|%M|%N|%C|%D|%b|%i|%tres-alloc|%tres-per-node
     """
     if not isinstance(clusters, str):
         c = ",".join(clusters)
     else:
         c = clusters
     squeue_args = ['squeue', '-M', c, '-h',
-                   '-o', '%u|%g|%T|%N|%C|%D|%b|%i|%tres-alloc|%tres-per-node']
+                   '-o', '%u|%g|%T|%M|%N|%C|%D|%b|%i|%tres-alloc|%tres-per-node']
     squeue_str = Popen(squeue_args, stdout=PIPE).stdout.read()
-    return _parse_squeue_output(squeue_str.decode('utf-8'), c)
+    return _parse_squeue_output(squeue_str.decode('utf-8'))
 
 
-def _parse_squeue_output(text, clusters_arg=None):
+def _parse_squeue_output(text):
     """Parse pipe-delimited squeue output into a dict of cluster -> {'jobs': [...]}.
 
     Returns data in a structure compatible with process_jobs().
     """
     result = {}
     current_cluster = None
-    # When querying a single cluster, Slurm may omit the CLUSTER: header.
-    fallback_cluster = None
-    if clusters_arg and ',' not in clusters_arg:
-        fallback_cluster = clusters_arg
 
     for line in text.splitlines():
         line = line.strip()
@@ -234,21 +228,26 @@ def _parse_squeue_output(text, clusters_arg=None):
             continue
 
         parts = line.split('|')
-        if len(parts) < 10:
+        if len(parts) < 11:
             continue
 
         user_name = parts[0].strip()
         group_name = parts[1].strip()
         job_state = parts[2].strip()
-        node_list = parts[3].strip()
-        num_cpus = int(parts[4].strip()) if parts[4].strip().isdigit() else 0
-        num_nodes = int(parts[5].strip()) if parts[5].strip().isdigit() else 0
-        gres = parts[6].strip()
-        job_id = parts[7].strip()
-        tres_alloc = parts[8].strip()
-        tres_per_node = parts[9].strip()
+        cluster = parts[3].strip()
+        node_list = parts[4].strip()
+        num_cpus = int(parts[5].strip()) if parts[5].strip().isdigit() else 0
+        num_nodes = int(parts[6].strip()) if parts[6].strip().isdigit() else 0
+        gres = parts[7].strip()
+        job_id = parts[8].strip()
+        tres_alloc = parts[9].strip()
+        tres_per_node = parts[10].strip()
 
-        effective_cluster = current_cluster or fallback_cluster or '_default'
+        # Use cluster from %M field if available, else from CLUSTER: header
+        if cluster and cluster != '(null)':
+            effective_cluster = cluster
+        else:
+            effective_cluster = current_cluster or '_default'
 
         if effective_cluster not in result:
             result[effective_cluster] = {'jobs': []}
@@ -327,14 +326,10 @@ def sinfof_local(clusters):
     return _parse_sinfo_output(txt, c)
 
 def squeuef_local(clusters):
-    if not isinstance(clusters, str):
-        c = ",".join(clusters)
-    else:
-        c = clusters
     filename=os.path.join(os.path.dirname(os.path.realpath(__file__)), "squeue_out.txt")
     with open(filename, 'r') as f:
         txt = f.read().strip()
-    return _parse_squeue_output(txt, c)
+    return _parse_squeue_output(txt)
 
 def sacctf_local(clusters):
     parse_format = OrderedDict({
