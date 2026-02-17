@@ -136,11 +136,6 @@ class ClusterStat:
                      TIMEOUT,
         )
         """
-        # Pre-populate users for all clusters known from sinfo so that
-        # screen.py never hits a KeyError for clusters with zero jobs.
-        for cluster in self.resource_list:
-            self.users.setdefault(cluster, OrderedDict())
-
         for cluster in self.squeue.keys():
             cluster_users = self.users.setdefault(cluster, OrderedDict())
 
