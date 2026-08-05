@@ -1,4 +1,0 @@
-pyfiglet
-numpy
-xmltodict
-python-dateutil

@@ -1,0 +1,32 @@
+# Build artefacts
+build/
+dist/
+*.egg
+*.egg-info/
+.eggs/
+
+# Byte-compiled
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Editor scratch
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Captured command output. The checked-in sinfo_out.json / squeue_out.json /
+# sacct_out.csv fixtures that --local reads are deliberately NOT ignored.
+output
+output_*
+hpc_monitor/output
+hpc_monitor/sacct_out.json
+nvidia-out.*
+
+# Default --output target for the plotting commands
+plot.png
