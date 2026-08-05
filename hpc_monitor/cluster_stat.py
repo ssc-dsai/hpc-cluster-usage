@@ -1,13 +1,13 @@
 import re
 import sys
 import os
-from collections import OrderedDict
+from collections import OrderedDict, Counter, defaultdict
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import functools
 import time
+
+# NB pandas/matplotlib/seaborn are imported lazily inside gpu_report(); they cost
+# ~1.8s of interpreter startup and are only needed by the sacct report path.
 
 import json
 import argparse
@@ -15,7 +15,8 @@ import getpass
 import subprocess
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from .sqstat import sinfof, squeuef, sacctf, sinfof_local, squeuef_local, sacctf_local, job_smi
+from .sqstat import (sinfof, squeuef, sacctf, sinfof_local, squeuef_local,
+                     sacctf_local, reservationf, reservationf_local, job_smi)
 from .screen import Display
 
 def cache_result(ttl_seconds=30):
@@ -44,8 +45,22 @@ def cache_result(ttl_seconds=30):
     return decorator
 
 class ClusterStat:
+    # Pending jobs parked on one of these will not run without someone
+    # intervening, so counting them as queued demand overstates contention.
+    DEAD_PENDING_REASONS = frozenset({
+        "DependencyNeverSatisfied",
+        "JobHoldMaxRequeue",
+        "JobHeldAdmin",
+        "JobHeldUser",
+        "BadConstraints",
+        "InvalidQOS",
+        "InvalidAccount",
+    })
+
     def __init__(self, *args, **kwargs):
         self.__dict__.update(kwargs) # just put em all as attributes why not?
+        self.pending_reasons = defaultdict(Counter)
+        self.downtime = OrderedDict()
         self.users = OrderedDict()
         self.resource_gpu = OrderedDict()
         self.resource_gpu_desc = OrderedDict()
@@ -81,6 +96,52 @@ class ClusterStat:
             else:
                 self._sacct = sacctf(self.clusters, self.start_time.strftime('%m%d%y'), self.end_time.strftime('%m%d%y'), partition=self.partition)
         return self._sacct
+
+    def process_downtime(self):
+        """Find the next scheduled maintenance window for each cluster.
+
+        Maintenance is expressed as a MAINT reservation. Sites often schedule
+        the whole calendar years ahead (55 entries here), so only the next
+        window that has not yet finished is of any use on screen.
+        """
+        # cluster names come from sinfo -- "all" is a federation alias that
+        # scontrol will not accept
+        clusters = list(self.sinfo.keys())
+        if not clusters:
+            return
+        if self.local:
+            reservations = reservationf_local(clusters)
+        else:
+            reservations = reservationf(clusters)
+
+        now = time.time()
+        for cluster, resv_list in reservations.items():
+            upcoming = []
+            for resv in resv_list:
+                if "MAINT" not in resv.get('flags', []):
+                    continue
+                start = resv['start_time']
+                end = resv['end_time']
+                if not (start.get('set') and end.get('set')):
+                    continue
+                if end['number'] <= now:
+                    continue  # already finished
+                upcoming.append((start['number'], end['number'], resv))
+
+            if not upcoming:
+                continue
+            start, end, resv = min(upcoming, key=lambda x: x[0])
+            self.downtime[cluster] = {
+                'name': resv.get('name', ''),
+                'start': start,
+                'end': end,
+                'active': start <= now,
+                'node_count': resv.get('node_count', 0),
+                'whole_cluster': "ALL_NODES" in resv.get('flags', []),
+                # jobs are not started if they would still be running when the
+                # window opens, so this is the longest walltime worth asking for
+                'max_walltime': max(0, start - now),
+            }
 
     @cache_result(ttl_seconds=300)  # Cache for 5 minutes (allocation strings are often repeated)
     def parse_alloc_string(self, string):
@@ -152,17 +213,25 @@ class ClusterStat:
                     user_data['branch'] = group_name.split("_")[0].upper()
                 
                 job_state = job['job_state'][0]
-                # Parse allocation string (now cached)
+                # Parse allocation string (now cached). Copy before annotating:
+                # the cache hands back the same dict for a repeated TRES string,
+                # so mutating it in place would poison every other job's entry.
                 if job_state == "RUNNING":
-                    alloc = self.parse_alloc_string(job['tres_alloc_str'])
+                    alloc = dict(self.parse_alloc_string(job['tres_alloc_str']))
                 else:
-                    alloc = self.parse_alloc_string(job['tres_req_str'])
-                
+                    alloc = dict(self.parse_alloc_string(job['tres_req_str']))
+
                 if job_state == "RUNNING":
+                    end = job['end_time']
+                    alloc['end_time'] = end['number'] if end.get('set') else None
                     running_jobs = user_data.setdefault("RUNNING", [])
                     running_jobs.append(alloc)
                     self.process_running_job(job)
                 elif job_state == "PENDING":
+                    reason = job['state_reason']
+                    alloc['reason'] = reason
+                    alloc['blocked'] = reason in self.DEAD_PENDING_REASONS
+                    self.pending_reasons[cluster][reason] += 1
                     pending_jobs = user_data.setdefault("PENDING", [])
                     pending_jobs.append(alloc)
                 else:
@@ -236,9 +305,27 @@ class ClusterStat:
                 gpu_name = None
                 gpu_count = 0
                 node_states = info['node']['state']
-                down_node = False
-                if ("DOWN" in node_states) or ("DRAIN" in node_states) or ("NOT_RESPONDING" in node_states):
-                    down_node = True
+                # Distinguish hard-down from draining: a draining node is still
+                # running its existing jobs, it just accepts no new work.
+                if ("DOWN" in node_states) or ("NOT_RESPONDING" in node_states):
+                    status = "down"
+                elif "DRAIN" in node_states:
+                    status = "drain"
+                elif "RESERVED" in node_states:
+                    status = "reserved"
+                else:
+                    status = "ok"
+
+                # Free memory can gate scheduling even when cores read as idle.
+                # Flag a node when not even one core's average share of memory
+                # is left, so the display stops painting it as available.
+                mem_total = info['memory']['maximum']
+                mem_free_field = info['memory']['free']['maximum']
+                mem_free = mem_free_field['number'] if mem_free_field.get('set') else None
+                cpu_idle = info['cpus']['idle']
+                mem_blocked = False
+                if (mem_free is not None) and (status == "ok") and (cpu_idle > 0) and n_cpus:
+                    mem_blocked = mem_free < (mem_total / n_cpus)
 
                 if gpus_string:
                     gpus_list = re.split(r'[:()\s]+', gpus_string)
@@ -250,25 +337,29 @@ class ClusterStat:
                     self.resource_gpu_desc[cluster].setdefault(node_name, OrderedDict())
                     self.resource_gpu[cluster][node_name].setdefault(gpu_name, np.zeros(gpu_count, dtype=object))
                     self.resource_gpu_desc[cluster][node_name].setdefault(gpu_name, np.zeros(gpu_count, dtype=object))
-                    if down_node:
-                        self.resource_gpu[cluster][node_name][gpu_name].fill(-1)
-                        self.resource_gpu_desc[cluster][node_name][gpu_name].fill(-1)
 
                 self.resource_list.setdefault(cluster, OrderedDict())
                 self.resource_desc.setdefault(cluster, OrderedDict())
                 self.resource_list[cluster].setdefault(node_name, np.zeros(n_cpus, dtype=object))
                 self.resource_desc[cluster].setdefault(node_name, np.zeros(n_cpus, dtype=object))
-                if down_node:
-                    self.resource_list[cluster][node_name].fill(-1)
-                    self.resource_desc[cluster][node_name].fill(-1)
-            
+                # NB the resource arrays hold occupancy counts only. Node health
+                # lives in node_data['status'] so that a core allocated on a
+                # draining node still renders as allocated -- previously the
+                # arrays were filled with -1 and process_cpu_usage's "+= 1"
+                # turned those cells back into 0, i.e. "free".
+
                 self.node_data.setdefault(cluster, OrderedDict())
                 self.node_data[cluster][node_name] = {
-                        'memory': info['memory']['maximum'],
+                        'memory': mem_total,
                         'memory_used': info['memory']['allocated'],
+                        'memory_free': mem_free,
+                        'mem_blocked': mem_blocked,
+                        'status': status,
+                        'state': node_states,
+                        'reason': info['reason']['description'],
                         'cpu_count': n_cpus,
                         'cpu_used': info['cpus']['allocated'],
-                        'cpu_idle': info['cpus']['idle'],
+                        'cpu_idle': cpu_idle,
                         'core_count': info['cores']['maximum'],
                         'gpu_name': gpu_name,
                         'gpu_count': gpu_count,
@@ -288,6 +379,10 @@ class ClusterStat:
     def gpu_report(self):
         """Prepare a usage report on GPUs.
         """
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
         # fill "" with NaN
         df = self.sacct.ffill()
         "gres/gpu:(.*?)="
@@ -326,6 +421,7 @@ class ClusterStat:
 
         self.process_info() # must be called first
         self.process_jobs() # second..
+        self.process_downtime() # needs the cluster list resolved by process_info
 
 def valid_datetime(arg_str):
     try:
@@ -382,7 +478,12 @@ def main():
     screen = Display(**args_dict)
     screen.cluster_stat = cs
     screen.initialize_usercodes()
-    print(screen)
+    # emit each cluster as soon as it is rendered rather than building the whole
+    # string first, so the first cluster reaches the terminal immediately
+    for cluster in cs.resource_list:
+        sys.stdout.write("\n" + screen.format_output(cluster))
+        sys.stdout.flush()
+    sys.stdout.write("\n")
 
 if __name__ == '__main__':
     main()

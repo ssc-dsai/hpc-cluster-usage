@@ -14,7 +14,9 @@ import json
 import os
 import re
 import string
-import pandas as pd
+
+# NB pandas is imported lazily inside the sacct helpers; it is not needed by the
+# sinfo/squeue path that drives the cluster_stat display.
 
 def job_smi(jobid, cluster=None):
     cluster_arg = ''
@@ -102,8 +104,49 @@ def squeuef(clusters):
     #   --- JB_owner
     #return squeue_obj
 
+def reservationf(clusters):
+    """Return {cluster: [reservation, ...]} for the given clusters.
+
+    scontrol refuses more than one cluster per invocation, so fan out one
+    process per cluster and collect them together. Each call is ~60ms and they
+    overlap, so this stays cheap even on a federation.
+    """
+    if isinstance(clusters, str):
+        clusters = [c for c in clusters.split(",") if c]
+
+    procs = {}
+    for cluster in clusters:
+        args = ['scontrol', '-M', cluster, 'show', 'reservation', '--json']
+        try:
+            procs[cluster] = Popen(args, stdout=PIPE, stderr=PIPE)
+        except OSError:
+            # no scontrol on PATH -- treat downtime info as simply unavailable
+            return {}
+
+    results = {}
+    for cluster, proc in procs.items():
+        out, _ = proc.communicate()
+        if proc.returncode != 0:
+            continue
+        try:
+            results[cluster] = json.loads(out.decode('utf-8')).get('reservations', [])
+        except (json.decoder.JSONDecodeError, UnicodeDecodeError):
+            # older Slurm without --json support, or a partial read
+            continue
+    return results
+
+
+def reservationf_local(clusters):
+    filename = os.path.join(os.path.dirname(os.path.realpath(__file__)), "resv_out.json")
+    if not os.path.exists(filename):
+        return {}
+    with open(filename, 'r') as f:
+        return json.load(f)
+
+
 def sacctf(clusters, start_time, end_time, partition=""):
     """Return sacct output as a dictionary"""
+    import pandas as pd
     parse_format = OrderedDict({
                     "CPUTime": 30,
                     "NCPUS": 10,
@@ -204,6 +247,7 @@ def squeuef_local(clusters):
     return _read_json_string(txt)
     
 def sacctf_local(clusters):
+    import pandas as pd
     parse_format = OrderedDict({
                     "CPUTime": 30,
                     "NCPUS": 10,
