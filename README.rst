@@ -27,8 +27,37 @@ Commands
 
 ``cluster_stat``, ``user_report`` and ``gpu_report`` take ``-M``/``--clusters``
 and ``-P``/``--partition``; the two reporting commands also take
-``-S``/``--start-time``, ``-E``/``--end-time`` and ``-o``/``--output``. Dates are
-``mmddyy`` (``100725`` is 7 October 2025). ``--help`` lists everything.
+``-S``/``--start-time``, ``-E``/``--end-time`` and ``-o``/``--output``.
+``--help`` lists everything.
+
+Dates
+~~~~~
+
+``-S`` and ``-E`` accept several forms:
+
+======================  ==========================================================
+``100725``              the original ``mmddyy``
+``2025-10-07``          a calendar date; ``Oct 7 2025`` and ``1 August 2026`` work
+``now``, ``today``      this instant, or midnight at the start of today
+``yesterday``           and ``tomorrow``
+``last week``           seven days back
+``3 days ago``          also ``2 weeks``, ``6 months ago``, ``two weeks ago``
+``2w``                  shorthand: ``d``, ``w``, ``m``, ``y``, and ``h`` for hours
+``this month``          start of the current month; also ``this week``/``this year``
+``last friday``         the most recent past occurrence of that weekday
+======================  ==========================================================
+
+Relative expressions are rolling offsets from now -- ``last week`` is seven days
+back rather than the previous calendar week -- so the two ends of a range
+compose predictably::
+
+    user_report -M gpsc7 -S "last week"
+    user_report -M gpsc7 -S "3 months ago" -E "1 month ago" --by agency
+
+Everything except ``now`` and ``N hours ago`` lands on midnight at the start of
+the named day. **The end of the window is exclusive**, so ``-E today`` stops at
+midnight this morning and leaves today out. Use ``-E now`` -- which is the
+default, so simply omitting ``-E`` is usually what you want.
 
 The commands share one argument parser, so ``--help`` shows every option
 regardless of which command you ask. Options outside a command's own group do
@@ -45,9 +74,9 @@ console scripts are in your ``PATH``. In the source directory:
     pip install --user .
 
 ``cluster_stat`` and ``gpu_usage`` need only the declared dependencies
-(``numpy``, ``pyfiglet``, ``xmltodict``). The two reporting commands additionally
-need ``pandas`` and ``matplotlib`` (``gpu_report`` also uses ``seaborn``), which
-are **not** currently declared in ``setup.py``:
+(``numpy``, ``pyfiglet``, ``xmltodict``, ``python-dateutil``). The two reporting
+commands additionally need ``pandas`` and ``matplotlib`` (``gpu_report`` also
+uses ``seaborn``), which are **not** currently declared in ``setup.py``:
 
 .. code-block::
 

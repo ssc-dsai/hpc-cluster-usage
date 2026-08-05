@@ -27,6 +27,7 @@ setup(name='hpc_monitor',
           "argparse",
           "pyfiglet",
           "xmltodict",
+          "python-dateutil",
       ],
       entry_points={
           'console_scripts': [

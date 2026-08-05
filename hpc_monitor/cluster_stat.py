@@ -423,12 +423,124 @@ class ClusterStat:
         self.process_jobs() # second..
         self.process_downtime() # needs the cluster list resolved by process_info
 
+# Small words people actually type in front of a unit.
+_NUMBER_WORDS = {
+    'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11,
+    'twelve': 12, 'couple': 2, 'few': 3,
+}
+# Unit -> relativedelta keyword. Single letters allow "-S 2w".
+_UNITS = {
+    'h': 'hours', 'hour': 'hours', 'hours': 'hours',
+    'd': 'days', 'day': 'days', 'days': 'days',
+    'w': 'weeks', 'week': 'weeks', 'weeks': 'weeks',
+    'm': 'months', 'month': 'months', 'months': 'months',
+    'y': 'years', 'year': 'years', 'years': 'years',
+}
+_WEEKDAYS = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+             'friday': 4, 'saturday': 5, 'sunday': 6,
+             'mon': 0, 'tue': 1, 'tues': 1, 'wed': 2, 'thu': 3, 'thur': 3,
+             'thurs': 3, 'fri': 4, 'sat': 5, 'sun': 6}
+
+# "3 weeks ago", "3 weeks", "last 3 weeks", "last week", "2w"
+# A word quantity must be followed by whitespace; without that the optional
+# group happily eats "mont" out of "month" and leaves "h" as the unit.
+_RELATIVE = re.compile(
+    r'^(?:last\s+|past\s+|previous\s+)?'
+    r'(?:(?P<num>\d+)\s*|(?P<word>[a-z]+)\s+)?'
+    r'(?P<unit>hours?|days?|weeks?|months?|years?|[hdwmy])'
+    r'(?:\s+ago)?$'
+)
+_THIS = re.compile(r'^(?:this|current)\s+(?P<unit>week|month|year)$')
+_WEEKDAY = re.compile(r'^(?:last\s+|past\s+)?(?P<day>[a-z]+day|mon|tue|tues|wed|'
+                      r'thu|thur|thurs|fri|sat|sun)$')
+
+DATE_HELP = ("mmddyy (100725), a calendar date (2025-10-07, 'Oct 7 2025'), or "
+             "colloquial: now, today, yesterday, 'last week', '3 days ago', "
+             "'2 weeks', '6m', 'this month', 'last friday'")
+
+
+def _midnight(when):
+    return when.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def parse_when(text, now=None):
+    """Turn a date argument into a datetime.
+
+    Accepts the original mmddyy form, ordinary calendar dates, and the
+    colloquial expressions people reach for on the command line. Relative
+    expressions are rolling offsets from now -- "last week" is seven days back,
+    not the previous calendar week -- because that composes predictably with the
+    other end of the range. Date-only values land on midnight at the start of
+    that day; "now" is the current instant.
+    """
+    now = now or datetime.now()
+    text = " ".join((text or "").strip().lower().split())
+    if not text:
+        raise ValueError("empty date")
+
+    # mmddyy first, so existing invocations keep their exact meaning and a bare
+    # number is never handed to a more liberal parser
+    try:
+        return datetime.strptime(text, '%m%d%y')
+    except ValueError:
+        pass
+
+    if text in ('now', 'right now'):
+        return now
+    if text in ('today', 'this morning'):
+        return _midnight(now)
+    if text == 'yesterday':
+        return _midnight(now) - relativedelta(days=1)
+    if text == 'tomorrow':
+        return _midnight(now) + relativedelta(days=1)
+
+    match = _THIS.match(text)
+    if match:                                   # start of the current period
+        unit = match.group('unit')
+        if unit == 'week':
+            return _midnight(now) - relativedelta(days=now.weekday())
+        if unit == 'month':
+            return _midnight(now).replace(day=1)
+        return _midnight(now).replace(month=1, day=1)
+
+    match = _WEEKDAY.match(text)
+    if match and match.group('day') in _WEEKDAYS:
+        target = _WEEKDAYS[match.group('day')]
+        back = (now.weekday() - target) % 7 or 7   # always a past occurrence
+        return _midnight(now) - relativedelta(days=back)
+
+    match = _RELATIVE.match(text)
+    if match:
+        if match.group('num'):
+            count = int(match.group('num'))
+        elif match.group('word'):
+            word = match.group('word')
+            if word not in _NUMBER_WORDS:
+                raise ValueError(f"do not understand the quantity {word!r}")
+            count = _NUMBER_WORDS[word]
+        else:
+            count = 1
+        keyword = _UNITS[match.group('unit')]
+        when = now - relativedelta(**{keyword: count})
+        # hours are a time-of-day request; everything coarser is a date
+        return when if keyword == 'hours' else _midnight(when)
+
+    # ordinary calendar dates last: it is the most liberal parser, so it only
+    # sees input none of the specific forms above claimed
+    try:
+        from dateutil.parser import parse as parse_date
+        return parse_date(text)
+    except (ImportError, ValueError, OverflowError):
+        raise ValueError(f"unrecognised date {text!r}")
+
+
 def valid_datetime(arg_str):
     try:
-        return datetime.strptime(arg_str, '%m%d%y')
+        return parse_when(arg_str)
     except ValueError:
         raise argparse.ArgumentTypeError(
-            f"Invalid datetime format '{arg_str}'. Expected format: mmddyy (e.g. Oct 7, 2025 == '100725')"
+            f"Invalid date '{arg_str}'. Accepted: {DATE_HELP}"
         )
 
 def parse_args():
@@ -440,12 +552,16 @@ def parse_args():
     parser.add_argument('--partition', '-P', default='', help='Specify a particular partition to extract data from.')
     parser.add_argument('--local', action='store_true', help='Tell the program to search the directory for GPU usage files.')
     cluster_group.add_argument('--gpus-only', '-g', action='store_true', help='Print out only the GPU nodes.')
-    report_group.add_argument('--start-time', '-S', action='store', 
-                              help='Specify the start time for the report generation. Default is one month back.',
+    report_group.add_argument('--start-time', '-S', action='store',
+                              help=f'Start of the reporting window. Accepts {DATE_HELP}. '
+                                   'Default is one month back.',
                               type=valid_datetime,
                               default=(datetime.now() - relativedelta(months=1)))
-    report_group.add_argument('--end-time', '-E', action='store', 
-                              help='Specify the end time for the report generation. Default is today.',
+    report_group.add_argument('--end-time', '-E', action='store',
+                              help='End of the reporting window, exclusive: a date-only '
+                                   'value stops at midnight at the start of that day, so '
+                                   '"today" excludes today. Use "now" (the default) or '
+                                   '"tomorrow" to include it. Same formats as -S.',
                               type=valid_datetime,
                               default=datetime.now())
     report_group.add_argument('--output', '-o', action='store', 
