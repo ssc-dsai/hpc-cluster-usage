@@ -461,6 +461,27 @@ def parse_args():
                                   'list of usernames.')
     usage_group.add_argument('--plot', action='store_true',
                              help='Also write the usage history plot to --output.')
+    usage_group.add_argument('--by', '-b', choices=('user', 'group', 'agency'),
+                             default='user',
+                             help='What one row represents: individual users, the '
+                                  'full Slurm group (dfo_chs_enav), or just the '
+                                  'agency (DFO). Default user.')
+    usage_group.add_argument('--group', '-G', action='store', default='',
+                             help='Restrict the report to a comma separated list '
+                                  'of groups or agencies, e.g. "dfo_chs_enav" or '
+                                  '"DFO". Combine with --by to control how the '
+                                  'rows are aggregated.')
+    usage_group.add_argument('--chart', '-c', action='store_true',
+                             help='Draw a stacked usage-over-time chart in the '
+                                  'terminal. Implied when --users or --group '
+                                  'narrows the report.')
+    usage_group.add_argument('--no-chart', action='store_true',
+                             help='Suppress the terminal chart even when the '
+                                  'report is narrowed.')
+    usage_group.add_argument('--measure', '-m', choices=('cpu', 'gpu', 'jobs'),
+                             default='cpu',
+                             help='What the terminal chart plots: CPU-hours, '
+                                  'GPU-hours, or jobs started. Default cpu.')
     graphic_group.add_argument('jobid', nargs='?', type=int, help='Specify the SLURM jobid for the GPUs you wish to see.')
 
     return parser.parse_args()

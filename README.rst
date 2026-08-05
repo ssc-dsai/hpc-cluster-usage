@@ -14,8 +14,9 @@ Commands
   the GPU nodes, or ``-M``/``--clusters`` to pick a cluster (default ``all``).
 
 ``user_report``
-  Per-user usage history from the accounting database. Prints a summary table
-  and, with ``--plot``/``-o``, writes a stacked consumption-over-time chart.
+  Usage history from the accounting database, per user, group or agency. Prints
+  a summary table, draws a stacked usage-over-time chart in the terminal for
+  focused reports, and writes a PNG with ``--plot``/``-o``.
 
 ``gpu_report``
   Histogram of GPUs-per-job over a date range, stacked by agency.
@@ -137,13 +138,66 @@ GPU nodes are drawn the same way, one character per GPU::
     -----------------------------------------------------------------------
     TOTAL            403756   1,987,251     6,168
 
-``-n``/``--top`` limits the table (``0`` for all), ``-u``/``--users`` restricts
-it to named users. With ``--plot`` or ``-o`` a chart is written showing
-consumption stacked by user over time; CPU-hours and GPU-hours get their own
-axes.
+``-n``/``--top`` limits the table (``0`` for all). With ``--plot`` or ``-o`` a
+PNG is written showing consumption stacked over time; CPU-hours and GPU-hours
+get their own axes.
 
 Time buckets adapt to the window: daily up to five weeks, weekly up to eight
 months, monthly beyond that.
+
+Focused reports
+~~~~~~~~~~~~~~~
+
+Narrow the report and it draws a stacked chart in the terminal as well:
+
+==========================  ====================================================
+``-u``/``--users``          restrict to a comma separated list of users
+``-G``/``--group``          restrict to groups (``dfo_chs_enav``) or whole
+                            agencies (``DFO``), case-insensitively
+``-b``/``--by``             what a row represents: ``user`` (default), ``group``
+                            or ``agency``
+``-m``/``--measure``        what the terminal chart plots: ``cpu`` (default),
+                            ``gpu``, or ``jobs`` started
+``-c``/``--chart``          draw the chart even for an unfiltered report
+``--no-chart``              suppress it
+==========================  ====================================================
+
+Every user in a group, with their stats::
+
+    user_report -M gpsc7 -G dfo_chs_enav
+
+Which departments inside an agency are consuming the time::
+
+    user_report -M gpsc7 -G DFO --by group
+
+::
+
+     54,034 ┤++++++        ###### ###### ###### ###### ++++++ ++++++ ++++++ ~~~~~~
+            │====== ~~~~~~ ###### ###### ###### ###### ====== ====== ====== ~~~~~~
+     27,017 ┤###### ====== ###### ###### ###### ###### ###### ====== ====== ======
+            │###### ###### ###### ###### ###### ###### ###### ###### ###### ######
+          0 └──────────────────────────────────────────────────────────────────────
+             26 Jul 27 Jul 28 Jul 29 Jul 30 Jul 31 Jul 01 Aug 02 Aug 03 Aug 04 Aug
+
+      ## dfo_bioios   == dfo_comda   ++ dfo_dpnm   ~~ dfo_chs_enav   :: dfo_orph
+
+    GROUP        AGENCY   USERS    JOBS     CPU_HRS   GPU_HRS  AVG_WAIT  MAX_JOB  FAIL%
+    -----------------------------------------------------------------------------------
+    dfo_bioios   DFO          6    3321     436,757         0        4m     384c  62.8%
+    dfo_comda    DFO         17    6929     154,965         0       12m     512c   3.6%
+    dfo_dpnm     DFO         10    1822      73,000         0     1h05m     256c   2.4%
+    dfo_chs_enav DFO          2  136956      40,805         0        0m       7c   0.0%
+
+Groups are ``<agency>_<department>``, so ``--by agency`` rolls ``dfo_bioios``
+and ``dfo_comda`` together under ``DFO`` -- the same split ``cluster_stat`` uses
+for its AGENCY column.
+
+In a colour terminal each series is a colour; when output is piped or
+redirected, each series gets its own fill character instead, so the stack stays
+readable either way. Bars are apportioned by largest remainder, so the segments
+always sum to the drawn bar height, and the top of each bar uses an eighth-block
+so totals resolve to better than one row. Column count and tick spacing adapt to
+the terminal width.
 
 How usage is counted
 ~~~~~~~~~~~~~~~~~~~~
