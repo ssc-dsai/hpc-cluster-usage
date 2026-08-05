@@ -9,6 +9,19 @@ the new commands:
   * An overview of jobs currently running on the cluster and who is
     running them.
 
+* ``user_report``
+
+  * Per-user usage history from the accounting database: a summary table of
+    jobs, CPU/GPU-hours, mean queue wait and failure rate, plus an optional
+    stacked consumption-over-time plot (``--plot``/``-o``).
+
+  * ``user_report -M gpsc7 -S 070126 -E 080126 -n 10 --plot -o usage.png``
+
+  * Resource-hours are spread across the periods a job actually ran in, and
+    clipped to the reporting window. Records still marked RUNNING that the
+    controller no longer knows about are excluded and reported, since their
+    elapsed time grows without bound and would invent usage.
+
 * ``wstat``
 
   * A tweaked qstat that shows the full job name and has age of jobs instead

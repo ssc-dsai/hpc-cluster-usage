@@ -104,6 +104,94 @@ def squeuef(clusters):
     #   --- JB_owner
     #return squeue_obj
 
+USAGE_FIELDS = ("JobID", "User", "Account", "Group", "Partition", "State",
+                "Submit", "Start", "End", "Elapsed", "AllocTRES", "NNodes")
+
+
+def sacct_usagef(clusters, start_time, end_time, partition=""):
+    """Yield one dict per job allocation over the window.
+
+    Two deliberate differences from sacctf():
+
+    -X restricts output to job allocations. Without it sacct also returns every
+    step (.batch, .extern, .0) as its own row -- 67% of rows over a sample week
+    -- which both triples the row count and inflates any per-job statistic.
+
+    --parsable2 gives '|' separated fields instead of fixed-width columns, so
+    there are no %width values to overflow and no truncated values to guess at.
+    """
+    if not isinstance(clusters, str):
+        clusters = ",".join(clusters)
+
+    args = ['sacct', '--allusers', '-X', '--parsable2', '--noheader',
+            '-M', clusters, '-S', start_time, '-E', end_time,
+            '-o', ",".join(USAGE_FIELDS)]
+    if partition:
+        args += ["--partition", partition]
+
+    proc = Popen(args, stdout=PIPE, stderr=PIPE)
+    out, err = proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(f"sacct failed: {err.decode('utf-8', 'replace').strip()}")
+
+    rows = []
+    for line in out.decode('utf-8', 'replace').splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        if len(parts) < len(USAGE_FIELDS):
+            continue
+        rows.append(dict(zip(USAGE_FIELDS, parts)))
+    return rows
+
+
+def sacct_usagef_local(clusters, start_time, end_time, partition=""):
+    filename = os.path.join(os.path.dirname(os.path.realpath(__file__)), "usage_out.psv")
+    if not os.path.exists(filename):
+        return []
+    rows = []
+    with open(filename, 'r') as f:
+        for line in f:
+            parts = line.rstrip("\n").split("|")
+            if len(parts) >= len(USAGE_FIELDS):
+                rows.append(dict(zip(USAGE_FIELDS, parts)))
+    return rows
+
+
+def live_job_idsf(clusters):
+    """Job IDs the controller currently knows about, or None if it cannot say.
+
+    Needed to tell a genuinely running job from a stale accounting record. When
+    a job dies without slurmdbd recording an end, sacct keeps reporting it as
+    RUNNING with End=Unknown and an Elapsed that grows on every query -- worth
+    millions of phantom CPU-hours if taken at face value.
+
+    None (rather than an empty set) signals "could not check", so callers do
+    not mistake a squeue failure for "nothing is running".
+    """
+    if not isinstance(clusters, str):
+        clusters = ",".join(clusters)
+    args = ['squeue', '-M', clusters, '-h', '-o', '%i %F']
+    try:
+        proc = Popen(args, stdout=PIPE, stderr=PIPE)
+    except OSError:
+        return None
+    out, _ = proc.communicate()
+    if proc.returncode != 0:
+        return None
+
+    ids = set()
+    for line in out.decode('utf-8', 'replace').splitlines():
+        for token in line.split():
+            token = token.strip()
+            if not token:
+                continue
+            ids.add(token)
+            # 1234_5 (array task) should also match on its parent id
+            ids.add(token.split("_")[0])
+    return ids
+
+
 def reservationf(clusters):
     """Return {cluster: [reservation, ...]} for the given clusters.
 
@@ -170,7 +258,11 @@ def sacctf(clusters, start_time, end_time, partition=""):
     else:
         c = clusters
     format_string = ",".join([f"{k}%{v}" for k, v in parse_format.items()])
-    sacct_args = ['sacct', '--allusers', '-M', c, '-S', start_time, '-E', end_time, '-o', format_string] # '--json']
+    # -X: allocations only. Without it sacct also emits every job step
+    # (.batch/.extern/.N) as its own row -- ~67% of rows over a sample week --
+    # which counted each step as a separate job in the histogram and made the
+    # query roughly 15x slower.
+    sacct_args = ['sacct', '--allusers', '-X', '-M', c, '-S', start_time, '-E', end_time, '-o', format_string] # '--json']
     if partition:
         sacct_args += ["--partition", partition]
     #print(" ".join(sacct_args))

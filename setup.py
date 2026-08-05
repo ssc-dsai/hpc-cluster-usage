@@ -33,6 +33,7 @@ setup(name='hpc_monitor',
               'cluster_stat=hpc_monitor.cluster_stat:main',
               'gpu_usage=hpc_monitor.cluster_stat:job_main',
               'gpu_report=hpc_monitor.cluster_stat:sacct_main',
+              'user_report=hpc_monitor.usage:main',
           ]
       },
 )

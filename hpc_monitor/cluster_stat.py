@@ -451,6 +451,16 @@ def parse_args():
     report_group.add_argument('--output', '-o', action='store', 
                               help='Set the output file name for the report (plot).',
                               default=os.path.join(os.getcwd(), "plot.png"))
+    usage_group = parser.add_argument_group("Per-User Usage History")
+    usage_group.add_argument('--top', '-n', action='store', type=int, default=15,
+                             help='Limit the usage table to the N heaviest users '
+                                  '(default 15). The remainder are folded into a '
+                                  'single "other" row. Use 0 for all.')
+    usage_group.add_argument('--users', '-u', action='store', default='',
+                             help='Restrict the usage report to a comma separated '
+                                  'list of usernames.')
+    usage_group.add_argument('--plot', action='store_true',
+                             help='Also write the usage history plot to --output.')
     graphic_group.add_argument('jobid', nargs='?', type=int, help='Specify the SLURM jobid for the GPUs you wish to see.')
 
     return parser.parse_args()
