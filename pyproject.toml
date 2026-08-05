@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hpc_monitor"
+version = "1.0"
+description = "Colourful terminal views and usage reports for Slurm clusters"
+readme = "README.rst"
+requires-python = ">=3.8"
+license = "BSD-3-Clause"
+license-files = ["LICENSE.txt"]
+authors = [
+    { name = "Tom Daff", email = "tdd20@cam.ac.uk" },
+]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Topic :: System :: Monitoring",
+]
+
+# argparse is deliberately absent: it has been in the standard library since
+# 2.7, and naming it here pulls an abandoned PyPI backport instead.
+dependencies = [
+    "numpy",
+    "pyfiglet",
+    "xmltodict",
+    "python-dateutil",
+]
+
+[project.optional-dependencies]
+# Only gpu_report and user_report need these, and they are imported lazily so
+# cluster_stat runs without them: pip install "hpc_monitor[reports]"
+reports = [
+    "pandas",
+    "matplotlib",
+    "seaborn",
+]
+
+[project.scripts]
+cluster_stat = "hpc_monitor.cluster_stat:main"
+gpu_usage = "hpc_monitor.cluster_stat:job_main"
+gpu_report = "hpc_monitor.cluster_stat:sacct_main"
+user_report = "hpc_monitor.usage:main"
+
+[tool.setuptools]
+packages = ["hpc_monitor"]

@@ -73,17 +73,21 @@ console scripts are in your ``PATH``. In the source directory:
 
     pip install --user .
 
-``cluster_stat`` and ``gpu_usage`` need only the declared dependencies
-(``numpy``, ``pyfiglet``, ``xmltodict``, ``python-dateutil``). The two reporting
-commands additionally need ``pandas`` and ``matplotlib`` (``gpu_report`` also
-uses ``seaborn``), which are **not** currently declared in ``setup.py``:
+That covers ``cluster_stat`` and ``gpu_usage``, which need only ``numpy``,
+``pyfiglet``, ``xmltodict`` and ``python-dateutil``.
+
+``gpu_report`` and ``user_report`` additionally draw plots, which needs pandas,
+matplotlib and seaborn. They are an optional extra rather than a hard
+requirement, because they cost roughly 1.8s of interpreter startup and are
+imported lazily so that ``cluster_stat`` never pays for them:
 
 .. code-block::
 
-    pip install --user pandas matplotlib seaborn
+    pip install --user ".[reports]"
 
-These are imported lazily, so ``cluster_stat`` starts fast and works without
-them installed.
+Packaging is a single ``pyproject.toml`` (PEP 517/518 build system, PEP 621
+metadata); there is no ``setup.py``. Build a distribution with ``python -m
+build``.
 
 ``cluster_stat``
 ----------------
