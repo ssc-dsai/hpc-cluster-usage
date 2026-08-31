@@ -78,6 +78,16 @@ class Display:
         "down":     '\033[0m\033[41m\033[5m\033[1;37mX\033[0m', # red     - down
     }
 
+    # Prose forms of the FREE_CELL keys, for the "unreachable" tallies.
+    BLOCK_LABEL = {
+        "mem": "no memory", "drain": "draining",
+        "reserved": "reserved", "down": "down",
+    }
+
+    # Reservation names are free text, so cap them rather than let one stretch
+    # the whole summary panel. Long enough for this site's longest by some way.
+    RESV_NAME_WIDTH = 40
+
     def _node_glyph(self, cluster, node):
         """Classify a node so free slots can be drawn honestly."""
         info = self.cluster_stat.node_data.get(cluster, {}).get(node)
@@ -278,7 +288,8 @@ class Display:
         row = put(f"{'available:':>12s}{n_available:5d}", row)
         row = put(f"{'total:':>12s}{n_total:5d}", row)
         if unreachable:
-            detail = ", ".join(f"{v} {k}" for k, v in health.items())
+            detail = ", ".join(f"{v} {self.BLOCK_LABEL.get(k, k)}"
+                               for k, v in sorted(health.items(), key=lambda kv: -kv[1]))
             row = put(f"{'unreachable:':>12s}{unreachable:5d}  ({detail})", row)
         if m_total:
             row = put(f"{'memory:':>12s}{m_used/1048576:5.1f}/{m_total/1048576:.1f} TB"
@@ -330,14 +341,21 @@ class Display:
         window = self._duration(dt['end'] - dt['start'])
         scope = "whole cluster" if dt['whole_cluster'] else f"{dt['node_count']} nodes"
 
+        # the name is what you feed to `scontrol show reservation`, so it earns
+        # its place -- but dimmed, since it identifies rather than alerts
+        name = dt['name']
+        if len(name) > self.RESV_NAME_WIDTH:
+            name = name[:self.RESV_NAME_WIDTH - 1] + "…"
+        name = f" \033[2m{name}\033[0m" if name else ""
+
         if dt['active']:
             ends = time.strftime('%a %d %b %H:%M', time.localtime(dt['end']))
-            return [f"\033[1;41;97m DOWNTIME NOW \033[0m until {ends} ({scope})"]
+            return [f"\033[1;41;97m DOWNTIME NOW \033[0m until {ends} ({scope}){name}"]
 
         lead = dt['max_walltime']
         # highlight once the window is close enough to affect what you submit
         colour = "\033[1;33m" if lead < 7 * 86400 else "\033[2m"
-        lines = [f"{colour}downtime: {start} +{window} ({scope})\033[0m"]
+        lines = [f"{colour}downtime: {start} +{window} ({scope})\033[0m{name}"]
         lines.append(f"{colour}   max walltime until then: {self._duration(lead)}\033[0m")
         return lines
 
@@ -493,15 +511,18 @@ class Display:
         if cluster not in self.cluster_stat.resource_gpu.keys():
             return
         unavailable = 0
+        blocked_by = {}
         for node in self.cluster_stat.resource_gpu[cluster]:
             for gpu_name in self.cluster_stat.resource_gpu[cluster][node]:
                 gpu_arr = self.cluster_stat.resource_gpu[cluster][node][gpu_name]
                 empty_idx = np.where(gpu_arr == 0)
                 n_empty = empty_idx[0].shape[0]
-                # idle GPUs on a down/draining/memory-starved node are not
-                # actually obtainable, so keep them out of the "available" tally
-                if n_empty and (self._node_glyph(cluster, node) != "ok"):
+                # idle GPUs on an unhealthy or reserved node are not actually
+                # obtainable, so keep them out of the "available" tally
+                glyph = self._node_glyph(cluster, node)
+                if n_empty and (glyph != "ok"):
                     unavailable += n_empty
+                    blocked_by[glyph] = blocked_by.get(glyph, 0) + n_empty
                     continue
                 if n_empty != 0:
                     if (free_nodes == 0):
@@ -528,7 +549,11 @@ class Display:
             self._blit(row, column, line)
             row += 1
         if unavailable:
-            line = list(f"({unavailable} idle GPUs unreachable: node down/draining/no memory)")
+            # name the actual blockers rather than list every possibility: a
+            # reserved node and a dead one call for very different reactions
+            detail = ", ".join(f"{n} {self.BLOCK_LABEL.get(g, g)}"
+                               for g, n in sorted(blocked_by.items(), key=lambda kv: -kv[1]))
+            line = list(f"({unavailable} idle GPUs unreachable: {detail})")
             self.max_line_length = max(len(line), self.max_line_length)
             self._blit(row, column, line)
             row += 1

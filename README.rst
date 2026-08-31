@@ -98,10 +98,10 @@ colour codes stripped::
    ib13be-001:[                                        ]           used:  954
    ib13be-002:[                                        ]      available: 3086
    ib13be-003:[                                        ]          total: 4120
-   ib13be-004:[                                        ]    unreachable:   80  (2 mem)
+   ib13be-004:[                                        ]    unreachable:   80  (2 no memory)
    ib13be-005:[============================= =====   ==]         memory:  3.0/19.9 TB (15%)
    ib13be-006:[==============================          ]     freeing 1h:    0 CPU, 0 GPU (0 jobs)
-   ib13be-007:[========================================]    downtime: Sat 08 Aug 12:30 +1d12h (whole cluster)
+   ib13be-007:[========================================]    downtime: Sat 08 Aug 12:30 +1d12h (whole cluster) maint-2026-08-08
    ib13be-008:[================    ==========          ]       max walltime until then: 2d20h
    ib13be-009:[==========                              ]
    ib13be-010:[                                        ]    queued: 2 runnable, 0 blocked
@@ -136,9 +136,11 @@ run without someone intervening (unsatisfiable dependencies, held jobs, invalid
 QOS); these are excluded from the ``_Q`` columns so the queue figures reflect
 real contention rather than abandoned work.
 
-``downtime`` is the next ``MAINT`` reservation. Because Slurm will not start a
-job that would still be running when the window opens, ``max walltime until
-then`` is the longest ``--time`` worth requesting right now.
+``downtime`` is the next ``MAINT`` reservation, named so it can be looked up
+with ``scontrol show reservation <name>``. Because Slurm will not start a job
+that would still be running when the window opens, ``max walltime until then``
+is the longest ``--time`` worth requesting right now. Once the window opens the
+line becomes ``DOWNTIME NOW``, and the nodes it holds are the ones drawn ``r``.
 
 GPU nodes are drawn the same way, one character per GPU::
 
